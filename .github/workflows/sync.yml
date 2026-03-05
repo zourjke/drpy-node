@@ -3,7 +3,7 @@ name: Sync Upstream
 on:
   schedule:
     - cron: '0 */6 * * *' # 每 6 小时自动运行一次
-  workflow_dispatch:      # 允许手动触发
+  workflow_dispatch:      # 允许手动点击运行
 
 jobs:
   sync_latest_from_upstream:
@@ -12,12 +12,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: main # 截图显示你的分支是 main
+          ref: main # 你的分支名
 
       - name: Sync with Upstream
         uses: wei/pull@v3
         with:
           upstream_package_repository: hjdhnx/drpy-node
-          upstream_branch: master # 原作者的主分支通常是 master
-          target_branch: main     # 你的主分支是 main
+          upstream_branch: main  # 原作者的主分支
+          target_branch: main    # 你的主分支
           github_token: ${{ secrets.GITHUB_TOKEN }}
