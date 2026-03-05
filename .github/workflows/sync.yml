@@ -1,0 +1,23 @@
+name: 自动同步原作者更新
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # 每 6 小时自动运行一次
+  workflow_dispatch:      # 允许手动点击运行
+
+jobs:
+  sync_latest_from_upstream:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出你的代码
+        uses: actions/checkout@v4
+        with:
+          ref: master # drpy-node 默认通常是 master 分支
+
+      - name: 同步原仓库
+        uses: aieri/sync-upstream-repo@v1.3.0
+        with:
+          upstream_repo: "https://github.com/hjdhnx/drpy-node.git"
+          upstream_branch: master
+          target_branch: master
+          force: false # 如果你没改代码，建议设为 false；如果你改了想强行覆盖，设为 true
