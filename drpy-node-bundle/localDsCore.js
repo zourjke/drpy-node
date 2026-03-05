@@ -88,7 +88,7 @@ async function getEngine(moduleName, query, inject_env) {
             hostname = "127.0.0.1:9978",
             hostUrl = "127.0.0.1",
             proxyUrl = `http://127.0.0.1:9978/proxy?do=node&siteKey=${moduleName}`,
-            httpUrl, imageApi, mediaProxyUrl, webdavProxyUrl, ftpProxyUrl,
+            proxyPath, httpUrl, imageApi, mediaProxyUrl, webdavProxyUrl, ftpProxyUrl,
             wsName, fServer,
         } = inject_env;
         const getProxyUrl = function () {
@@ -109,6 +109,7 @@ async function getEngine(moduleName, query, inject_env) {
             requestHost,
             hostname,
             proxyUrl,
+            proxyPath, // 代理路径
             getProxyUrl,
             ext: moduleExt,
             moduleName: moduleName,
@@ -240,6 +241,73 @@ async function getEngine(moduleName, query, inject_env) {
         // return [200, 'text/plain', 'hello world', {'User-Agent':'okhttp/3.11'}, 0];
         const result = await apiEngine.proxy(modulePath, env, query);
         return result;
+    }
+
+    // 处理解析逻辑
+    if ('parse' in query) {
+        let t1 = (new Date()).getTime(); // 记录开始时间
+        // 构建解析器文件路径
+        const jxName = query.parse;
+        const jxPath = path.join(options.jxDir, `${jxName}.js`);
+
+        const backResp = await drpyS.jx(jxPath, env, query);
+
+        const statusCode = 200;
+        const mediaType = 'application/json; charset=utf-8';
+
+        // 处理对象类型的响应
+        if (typeof backResp === 'object') {
+            // 设置默认的状态码
+            if (!backResp.code) {
+                let statusCode = backResp.url && backResp.url !== query.url ? 200 : 404;
+                backResp.code = statusCode
+            }
+
+            // 设置默认的消息
+            if (!backResp.msg) {
+                let msgState = backResp.url && backResp.url !== query.url ? '成功' : '失败';
+                backResp.msg = `${jxName}解析${msgState}`;
+            }
+
+            // 计算耗时
+            let t2 = (new Date()).getTime();
+            backResp.cost = t2 - t1;
+
+            let backRespSend = backResp;
+            console.log(backRespSend);
+            return backRespSend;
+        }
+        // 处理字符串类型的响应
+        else if (typeof backResp === 'string') {
+            // 构建标准响应格式
+            let statusCode = backResp && backResp !== query.url ? 200 : 404;
+            let msgState = backResp && backResp !== query.url ? '成功' : '失败';
+            let t2 = (new Date()).getTime();
+
+            let result = {
+                code: statusCode,
+                url: backResp,
+                msg: `${jxName}解析${msgState}`,
+                cost: t2 - t1
+            }
+
+            let backRespSend = result;
+            console.log(backRespSend);
+            return backRespSend;
+        } else {
+            // 其他类型的响应，返回失败
+            let t2 = (new Date()).getTime();
+
+            let result = {
+                code: 404,
+                url: "",
+                msg: `${jxName}解析失败`,
+                cost: t2 - t1
+            }
+            let backRespSend = result;
+            console.log(backRespSend);
+            return backRespSend;
+        }
     }
 
     // 处理强制刷新初始化逻辑

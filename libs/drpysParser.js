@@ -413,12 +413,12 @@ export async function homeParse(rule) {
             });
         }
     }
-
+    const rule_filter = rule.hasOwnProperty('filter') ? rule.filter || {} : null;
     const context = createParserContext(url, rule, {
         TYPE: 'home',
         input: url,
         classes: classes,
-        filters: rule.filter,
+        filters: rule_filter,
         cate_exclude: rule.cate_exclude,
         home_flag: rule.home_flag,
     });

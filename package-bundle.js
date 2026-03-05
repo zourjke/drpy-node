@@ -7,6 +7,7 @@ import url from 'url';
 const INCLUDE_ITEMS = [
     'libs',
     'spider',
+    'jx',
     'localt5.js',
     'localDsCoreTest.js'
 ];
@@ -18,7 +19,7 @@ const getScriptDir = () => dirname(resolve(url.fileURLToPath(import.meta.url)));
 const compressBundle = (scriptDir) => {
     // drpy-node-bundle 目录路径
     const bundleDir = join(scriptDir, 'drpy-node-bundle');
-    
+
     if (!existsSync(bundleDir)) {
         console.error(`错误: 目录 ${bundleDir} 不存在!`);
         return;
@@ -31,9 +32,9 @@ const compressBundle = (scriptDir) => {
         month: '2-digit',
         day: '2-digit'
     }).replace(/\//g, '');
-    
+
     const archiveName = `${currentDirName}-${currentTime}.7z`;
-    
+
     // 输出路径 (与 drpy-node 的打包输出位置一致，即项目根目录的上一级)
     const parentDir = resolve(scriptDir, '..');
     const archivePath = join(parentDir, archiveName);
@@ -59,7 +60,7 @@ const compressBundle = (scriptDir) => {
     // 使用 cd 切换到 bundleDir 目录，这样打包的内容就是相对路径（不包含 drpy-node-bundle 目录本身）
     // 7z a "archivePath" item1 item2 ...
     const command = `7z a -t7z "${archivePath}" ${includeParams.join(' ')}`;
-    
+
     console.log(`正在打包到: ${archivePath}`);
     console.log(`执行命令 (在 ${bundleDir} 下): ${command}`);
 
