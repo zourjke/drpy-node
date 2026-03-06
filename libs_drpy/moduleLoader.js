@@ -13,6 +13,15 @@ const customRequire = createRequire(import.meta.url);
 
 // 导出 rootRequire
 export const rootRequire = (modulePath) => {
+    // 处理内置模块或打包模块
+    if (modulePath === 'iconv-lite') return globalThis.iconv;
+    if (modulePath === 'axios') return globalThis.axios;
+    if (modulePath === 'cheerio') return globalThis.cheerio;
+    if (modulePath === 'qs') return globalThis.qs;
+    if (modulePath === 'crypto-js') return globalThis.CryptoJS;
+    if (modulePath === 'fs' && globalThis.fs) return globalThis.fs;
+    if (modulePath === 'path' && globalThis.path) return globalThis.path;
+
     if (modulePath.startsWith('./') || modulePath.startsWith('../')) {
         const absolutePath = path.resolve(LIB_ROOT, modulePath);
         return customRequire(absolutePath);

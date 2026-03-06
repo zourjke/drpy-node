@@ -10,6 +10,8 @@ import _ from './underscore-esm.min.js'
 import tunnel from "tunnel";
 import iconv from 'iconv-lite';
 globalThis.iconv = iconv;
+import * as cheerio from 'cheerio';
+globalThis.cheerio = cheerio;
 import {jsonpath, jsoup} from './htmlParser.js';
 import hlsParser from './hls-parser.js'
 import {keysToLowerCase} from '../utils/utils.js'

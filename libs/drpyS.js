@@ -304,13 +304,15 @@ export async function getSandbox(env = {}) {
         createFTPClient,
         DataBase,
         database,
-        require,
+        require: rootRequire,
         WebSocket,
         WebSocketServer,
         zlib,
         JSONbig,
         JsonBig,
         minizlib,
+        iconv: globalThis.iconv,
+        cheerio: globalThis.cheerio,
     };
 
     // 创建一个沙箱上下文，注入需要的全局变量和函数
