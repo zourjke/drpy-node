@@ -82,8 +82,8 @@ async function getEngine(moduleName, query, inject_env) {
     function getEnv(moduleName) {
         // const proxyUrl = inject_env.proxyUrl || "http://127.0.0.1:9978/proxy?do=node";
         const {
-            jsonUrl = "http://127.0.0.1:9978/json",
-            publicUrl = "http://127.0.0.1:9978/public",
+            jsonUrl = "http://127.0.0.1:9978/file/drpy-node/json/",
+            publicUrl = "http://127.0.0.1:9978/file/drpy-node/public/",
             requestHost = "http://127.0.0.1:9978",
             hostname = "127.0.0.1:9978",
             hostUrl = "127.0.0.1",
