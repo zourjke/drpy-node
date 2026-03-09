@@ -693,6 +693,7 @@ export const objectToQueryString = (obj) => {
 export async function getOriginalJs(js_code) {
     // let current_match = /var rule|[\u4E00-\u9FA5]+|function|let |var |const |\(|\)|"|'/;
     let current_match = /var rule|function|let |var |const|class Rule|async|this\./;
+    let current_match1 = /["{}&]/;
     if (current_match.test(js_code)) {
         return js_code
     }
@@ -773,7 +774,7 @@ export async function getOriginalJs(js_code) {
         // },
     ]
     let func_index = 0
-    while (!current_match.test(decode_content)) {
+    while (!current_match.test(decode_content) && !current_match1.test(decode_content)) {
         decode_content = decode_funcs[func_index](js_code);
         func_index++;
         if (func_index >= decode_funcs.length) {
