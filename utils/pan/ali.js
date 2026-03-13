@@ -1,6 +1,6 @@
 import dayjs from 'dayjs';
 import {IOS_UA} from '../misc.js';
-import req from '../req.js';
+import {reqs} from '../req.js';
 import {ENV} from "../env.js";
 
 const apiUrl = 'https://api.aliyundrive.com';
@@ -161,7 +161,7 @@ class AliDrive {
             });
         }
 
-        const resp = await req
+        const resp = await reqs
             .post(`${apiUrl}/${url}`, data, {
                 headers: headers,
             })
@@ -193,7 +193,7 @@ class AliDrive {
             Object.assign(headers, {
                 Authorization: "Bearer " + this.oauth.access_token,
             });
-            resp = await req
+            resp = await reqs
                 .post(`${url}`, data, {
                     headers: headers,
                 })
@@ -205,7 +205,7 @@ class AliDrive {
             Object.assign(headers, {
                 Authorization: this.user.auth,
             });
-            resp = await req
+            resp = await reqs
                 .post(`${apiUrl}/${url}`, data, {
                     headers: headers,
                 })
@@ -243,7 +243,7 @@ class AliDrive {
     //     Object.assign(headers, {
     //         Authorization: auth,
     //     });
-    //     const res = await req.post(url,data,{headers})
+    //     const res = await reqs.post(url,data,{headers})
     //     const parsedUrl = new URL(res.data.redirectUri);
     //     return parsedUrl.searchParams.get("code");
     // }
@@ -253,7 +253,7 @@ class AliDrive {
     //     if (!this.oauth.access_token || this.oauth.expire_time - dayjs().unix() < 120 && this.user.auth) {
     //         try {
     //             const code = await this.getCode(this.user.auth)
-    //             const response = await req.post('https://api.nn.ci/alist/ali_open/code', {
+    //             const response = await reqs.post('https://api.nn.ci/alist/ali_open/code', {
     //                     "code": code,
     //                     "grant_type": "authorization_code",
     //                     "client_id": "",
@@ -303,7 +303,7 @@ class AliDrive {
         let headers = {
             'Content-Type': 'application/json'
         }
-        let resp = await req.post('https://aliyundrive-oauth.messense.me/oauth/authorize/qrcode', data, {headers})
+        let resp = await reqs.post('https://aliyundrive-oauth.messense.me/oauth/authorize/qrcode', data, {headers})
         if (resp.data.sid) {
             this.sid = resp.data.sid
         }
@@ -321,13 +321,13 @@ class AliDrive {
         let headers = {
             'authorization': this.user.auth
         };
-        let resp = await req.post('https://open.aliyundrive.com/oauth/users/qrcode/authorize?sid=' + this.sid, body, {headers})
+        let resp = await reqs.post('https://open.aliyundrive.com/oauth/users/qrcode/authorize?sid=' + this.sid, body, {headers})
         return resp.data.result
     }
 
     //drive_status
     async getDriveCode() {
-        let status = await req.get(`https://openapi.aliyundrive.com/oauth/qrcode/${this.sid}/status`)
+        let status = await reqs.get(`https://openapi.aliyundrive.com/oauth/qrcode/${this.sid}/status`)
         if (status.data.status === 'LoginSuccess') {
             return status.data.authCode
         }
@@ -349,7 +349,7 @@ class AliDrive {
                     code: code,
                     grant_type: "authorization_code"
                 }
-                let response = await req.post('https://aliyundrive-oauth.messense.me/oauth/access_token', data)
+                let response = await reqs.post('https://aliyundrive-oauth.messense.me/oauth/access_token', data)
                 if (response.status === 200) {
                     this.oauth = response.data;
                     const info = JSON.parse(CryptoJS.enc.Base64.parse(this.oauth.access_token.split('.')[1]).toString(CryptoJS.enc.Utf8));
@@ -368,7 +368,7 @@ class AliDrive {
     // 登录并获取用户信息
     async refreshAccessToken() {
         if (!this.user.user_id || this.user.expire_time - dayjs().unix() < 120) {
-            let loginResp = await req
+            let loginResp = await reqs
                 .post(
                     'https://auth.aliyundrive.com/v2/account/token',
                     {
@@ -511,8 +511,10 @@ class AliDrive {
                 if (item.type === 'folder') {
                     subDir.push(item);
                 } else if (item.type === 'file' && item.category === 'video') {
+                    let text = /[#|'"\[\]&<>]/g
                     if (item.size < 1024 * 1024 * 5) continue;
                     item.name = item.name.replace(/玩偶哥.*【神秘的哥哥们】/g, '');
+                    item.name = text.test(item.name) ? item.name.replace(text, '') : item.name
                     videos.push(item);
                 } else if (item.type === 'file' && subtitleExts.some((x) => item.file_extension.endsWith(x))) {
                     subtitles.push(item);
@@ -628,7 +630,7 @@ class AliDrive {
         Object.assign(headers, {
             Authorization: this.user.auth,
         });
-        let resp = await req.post(url, {param}, {headers})
+        let resp = await reqs.post(url, {param}, {headers})
         if (resp.status === 200) {
             return resp.data
         } else {

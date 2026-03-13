@@ -1,10 +1,4 @@
-/**
- * UC网盘处理器模块
- * 提供UC网盘分享链接解析、文件下载、转存等功能
- * @module uc-handler
- */
-
-import req from '../req.js';
+import {reqs} from '../req.js';
 import {ENV} from '../env.js';
 import COOKIE from '../cookieManager.js';
 import CryptoJS from "crypto-js";
@@ -113,6 +107,17 @@ class UCHandler {
      * @param {Object} cfg - 配置对象
      */
     async initUC(db, cfg) {
+        if (this.token) {
+            let exp = JSON.parse(CryptoJS.enc.Base64.parse(this.token.split('.')[1]).toString(CryptoJS.enc.Utf8))
+            let now = Math.floor(Date.now() / 1000)
+            if (exp.exp < now) {
+                console.log('登录状态已过期,尝试刷新Token')
+                await this.refreshUcToken()
+            } else {
+                console.log('登录成功，继续使用,可使用时间截止到：' + (new Date(exp.exp * 1000)).toLocaleString())
+                console.log('UC TV token获取成功：' + this.token)
+            }
+        }
         if (this.cookie) {
             console.log("cookie 获取成功");
         } else {
@@ -209,16 +214,25 @@ class UCHandler {
 
         // 遍历所有目标文件，计算与主文件的匹配度
         for (let i = 0; i < targetItems.length; i++) {
+
             const currentLCS = this.lcs(mainItem.name, targetItems[i].name);
+
             results.push({target: targetItems[i], lcs: currentLCS});
             // 更新最佳匹配
             if (currentLCS.length > results[bestMatchIndex].lcs.length) {
+
                 bestMatchIndex = i;
+
             }
+
         }
 
+
         const bestMatch = results[bestMatchIndex];
+
+
         return {allLCS: results, bestMatch: bestMatch, bestMatchIndex: bestMatchIndex};
+
     }
 
     /**
@@ -253,12 +267,12 @@ class UCHandler {
 
         // 根据方法类型发送请求
         const resp =
-            method === 'get' ? await req.get(`${this.apiUrl}/${url}`, {
+            method === 'get' ? await reqs.get(`${this.apiUrl}/${url}`, {
                 headers: headers,
             }).catch((err) => {
                 console.error(err);
                 return err.response || {status: 500, data: {}};
-            }) : await req.post(`${this.apiUrl}/${url}`, data, {
+            }) : await reqs.post(`${this.apiUrl}/${url}`, data, {
                 headers: headers,
             }).catch((err) => {
                 console.error(err);
@@ -395,6 +409,7 @@ class UCHandler {
                     // 过滤小于5MB的视频文件
                     if (item.size < 1024 * 1024 * 5) continue;
                     item.stoken = this.shareTokenCache[shareData.shareId].stoken;
+                    item.file_name = text.test(item.file_name) ? item.file_name.replace(text, '') : item.file_name
                     videos.push(item);
                 } else if (item.type === 'file' && this.subtitleExts.some((x) => item.file_name.endsWith(x))) {
                     // 收集字幕文件
@@ -550,9 +565,49 @@ class UCHandler {
         return CryptoJS.SHA256(data).toString();
     }
 
+    async refreshUcToken() {
+        const timestamp = Math.floor(Date.now() / 1000).toString() + '000'; // 13位时间戳需调整
+        const deviceID = this.Addition.DeviceID || this.generateDeviceID(timestamp);
+        const reqId = this.generateReqId(deviceID, timestamp);
+        let data = JSON.stringify({
+            "req_id": reqId,
+            "app_ver": this.conf.appVer,
+            "device_id": deviceID,
+            "device_brand": "OPPO",
+            "platform": "tv",
+            "device_name": "PCRT00",
+            "device_model": "PCRT00",
+            "build_device": "aosp",
+            "build_product": "PCRT00",
+            "device_gpu": "Adreno%20(TM)%20640",
+            "activity_rect": "%7B%7D",
+            "channel": this.conf.channel,
+            "refresh_token": this.token
+        });
+        let config = {
+            method: 'POST',
+            url: 'http://api.extscreen.com/ucdrive/token',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Linux; U; Android 7.1.2; zh-cn; PCRT00 Build/N2G47O) AppleWebKit/533.1 (KHTML, like Gecko) Mobile Safari/533.1',
+                'Connection': 'Keep-Alive',
+                'Accept-Encoding': 'gzip',
+                'Content-Type': 'application/json',
+                'Cookie': 'sl-session=VIaxTAKF8mdJBhU2uda0zA=='
+            },
+            data: data
+        };
+        let req = await axios.request(config);
+        if (req.status === 200) {
+            console.log('刷新token成功')
+            const token = req.data.data.access_token
+            let exp = JSON.parse(CryptoJS.enc.Base64.parse(token.split('.')[1]).toString(CryptoJS.enc.Utf8))
+            console.log('登录成功，继续使用,可使用时间截止到：' + (new Date(exp.exp * 1000)).toLocaleString())
+            ENV.set('uc_token_cookie', token)
+        }
+    }
 
     async getDownload(shareId, stoken, fileId, fileToken, clean) {
-
+        await this.initUC()
         if (!this.saveFileIdCaches[fileId]) {
 
             const saveFileId = await this.save(shareId, stoken, fileId, fileToken, clean);
@@ -614,38 +669,8 @@ class UCHandler {
                 return video;
             }
             if (req.data.status === -1 || req.data.errno === 10001) {
-                let data = JSON.stringify({
-                    "req_id": reqId,
-                    "app_ver": this.conf.appVer,
-                    "device_id": deviceID,
-                    "device_brand": "OPPO",
-                    "platform": "tv",
-                    "device_name": "PCRT00",
-                    "device_model": "PCRT00",
-                    "build_device": "aosp",
-                    "build_product": "PCRT00",
-                    "device_gpu": "Adreno%20(TM)%20640",
-                    "activity_rect": "%7B%7D",
-                    "channel": this.conf.channel,
-                    "refresh_token": this.token
-                });
-                let config = {
-                    method: 'POST',
-                    url: 'http://api.extscreen.com/ucdrive/token',
-                    headers: {
-                        'User-Agent': 'Mozilla/5.0 (Linux; U; Android 7.1.2; zh-cn; PCRT00 Build/N2G47O) AppleWebKit/533.1 (KHTML, like Gecko) Mobile Safari/533.1',
-                        'Connection': 'Keep-Alive',
-                        'Accept-Encoding': 'gzip',
-                        'Content-Type': 'application/json',
-                        'Cookie': 'sl-session=VIaxTAKF8mdJBhU2uda0zA=='
-                    },
-                    data: data
-                };
-                let req = await axios.request(config);
-                if (req.status === 200) {
-                    ENV.set('uc_token_cookie', req.data.data.refresh_token)
-                    return await this.getDownload(shareId, stoken, fileId, fileToken, clean)
-                }
+                await this.refreshUcToken()
+                return await this.getDownload(shareId, stoken, fileId, fileToken, clean)
             }
         } else {
             const down = await this.api(`file/download?${this.pr}`, {
@@ -661,9 +686,10 @@ class UCHandler {
                 };
                 // console.log('low_url:', low_url);
                 const test_result = await this.testSupport(low_url, low_headers);
-                // console.log('test_result:', test_result);
+                console.log('test_result:', test_result);
                 if (!test_result[0]) {
                     try {
+                        console.log(`getDownload:自动刷新UC cookie`)
                         await this.refreshUcCookie('getDownload');
                     } catch (e) {
                         console.log(`getDownload:自动刷新UC cookie失败:${e.message}`)
@@ -679,7 +705,7 @@ class UCHandler {
         const urls = [];
         if (Array.isArray(downCache)) {
             downCache.forEach((it) => {
-                urls.push(it.name, it.url);
+                urls.push(it.name, it.url + "#isVideo=true##fastPlayMode##threads=10#");
             });
         }
         return {parse: 0, url: urls}
@@ -709,10 +735,9 @@ class UCHandler {
 
     }
 
-
     async testSupport(url, headers) {
 
-        const resp = await req
+        const resp = await reqs
 
             .get(url, {
 
@@ -767,7 +792,6 @@ class UCHandler {
 
     }
 
-
     delAllCache(keepKey) {
 
         try {
@@ -818,7 +842,6 @@ class UCHandler {
         }
 
     }
-
 
     async chunkStream(inReq, outResp, url, urlKey, headers, option) {
 
@@ -954,7 +977,7 @@ class UCHandler {
 
                             console.log(inReq.id, chunkIdx);
 
-                            const dlResp = await req.get(url, {
+                            const dlResp = await reqs.get(url, {
 
                                 responseType: 'stream',
 

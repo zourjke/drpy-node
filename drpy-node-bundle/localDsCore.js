@@ -1,7 +1,7 @@
 import path from 'path';
 import {fileURLToPath} from 'url';
 import {existsSync} from 'fs';
-//import {md5, base64Decode} from './libs_drpy/crypto-util.js';
+import {base64Decode} from '../libs_drpy/crypto-util.js';
 import {startJsonWatcher, getApiEngine} from "../utils/api_helper.js";
 import * as drpyS from '../libs/drpyS.js';
 import php from '../libs/php.js';
@@ -56,6 +56,40 @@ const ENGINES = {
 //    pg: 1,
 //    extend: '',
 //};
+/**
+ * 创建带超时的Promise包装函数
+ * 为API操作添加超时控制，防止长时间阻塞
+ *
+ * @param {Promise} promise - 要包装的Promise对象
+ * @param {number|null} timeoutMs - 超时时间（毫秒），null则使用默认值
+ * @param {string} operation - 操作描述，用于错误信息
+ * @param {string|null} invokeMethod - 调用方法类型，用于确定超时时间
+ * @returns {Promise} 包装后的Promise，会在超时时reject
+ */
+function withTimeout(promise, timeoutMs = null, operation = 'API操作', invokeMethod = null) {
+    let defaultTimeout;
+
+    // 根据invokeMethod确定超时时间
+    if (invokeMethod === 'action') {
+        // action接口使用专用超时时间，默认60秒
+        defaultTimeout = 60 * 1000;
+    } else {
+        // 其他接口使用默认超时时间，默认20秒
+        defaultTimeout = 20 * 1000;
+    }
+
+    const actualTimeout = timeoutMs || defaultTimeout;
+
+    return Promise.race([
+        promise,
+        new Promise((_, reject) => {
+            setTimeout(() => {
+                reject(new Error(`${operation}超时 (${actualTimeout}ms)`));
+            }, actualTimeout);
+        })
+    ]);
+}
+
 async function getEngine(moduleName, query, inject_env) {
     // 壳子可以注入环境变量，内部自行构造env
     inject_env = inject_env || {};
@@ -131,7 +165,7 @@ async function getEngine(moduleName, query, inject_env) {
             return null;
         }
         const _env = getEnv(_moduleName);
-        const RULE = await apiEngine.getRule(_modulePath, _env);
+        const RULE = await withTimeout(apiEngine.getRule(_modulePath, _env), null, `获取规则[${_moduleName}]`);
 
         /**
          * 规则函数调用方法
@@ -177,12 +211,21 @@ async function getEngine(moduleName, query, inject_env) {
                 if (typeof RULE[_method] !== 'function') {
                     return null
                 } else {
-                    return await RULE[_method](..._args);
+                    return await withTimeout(
+                        RULE[_method],
+                        null,
+                        `规则方法[${_method}]`
+                    )
                 }
             }
 
             // 调用映射后的标准接口
-            return await apiEngine[invokeMethod](_modulePath, _env, ..._args);
+            return await withTimeout(
+                apiEngine[invokeMethod](_modulePath, _env, ..._args),
+                null,
+                `规则调用[${_method}]`,
+                invokeMethod
+            )
         };
         return RULE
     };
@@ -195,7 +238,11 @@ async function getEngine(moduleName, query, inject_env) {
 
     // 处理播放逻辑
     if ('play' in query) {
-        const result = await apiEngine.play(modulePath, env, query.flag, query.play);
+        const result = await withTimeout(
+            apiEngine.play(modulePath, env, query.flag, query.play),
+            null,
+            `播放接口[${moduleName}]`
+        );
         return result;
     }
 
@@ -207,40 +254,61 @@ async function getEngine(moduleName, query, inject_env) {
         // 解析筛选参数
         if (ext) {
             try {
-                extend = ext;
+                extend = JSON.parse(base64Decode(ext))
             } catch (e) {
                 console.error(`筛选参数错误:${e.message}`);
             }
         }
 
-        const result = await apiEngine.category(modulePath, env, query.t, pg, 1, extend);
+        const result = await withTimeout(
+            apiEngine.category(modulePath, env, query.t, pg, 1, extend),
+            null,
+            `分类接口[${moduleName}]`
+        );
         return result;
     }
 
     // 处理详情逻辑
     if ('ac' in query && 'ids' in query) {
-        const result = await apiEngine.detail(modulePath, env, query.ids);
+        const result = await withTimeout(
+            apiEngine.detail(modulePath, env, query.ids),
+            null,
+            `详情接口[${moduleName}]`
+        );
         return result;
     }
 
     // 处理动作逻辑
     if ('ac' in query && 'action' in query) {
-        const result = await apiEngine.action(modulePath, env, query.action, query.value);
+        const result = await withTimeout(
+            apiEngine.action(modulePath, env, query.action, query.value),
+            null,
+            `动作接口[${moduleName}]`,
+            'action'
+        );
         return result;
     }
 
     // 处理搜索逻辑
     if ('wd' in query) {
         const quick = 'quick' in query ? query.quick : 0;
-        const result = await apiEngine.search(modulePath, env, query.wd, quick, pg);
+        const result = await withTimeout(
+            apiEngine.search(modulePath, env, query.wd, quick, pg),
+            null,
+            `搜索接口[${moduleName}]`
+        );
         return result;
     }
 
     // 处理代理逻辑
     if ('proxy' in query) {
         // return [200, 'text/plain', 'hello world', {'User-Agent':'okhttp/3.11'}, 0];
-        const result = await apiEngine.proxy(modulePath, env, query);
-        return result;
+        const backRespList = await withTimeout(
+            apiEngine.proxy(modulePath, env, query),
+            null,
+            `代理接口[${moduleName}]`
+        );
+        return backRespList;
     }
 
     // 处理解析逻辑
@@ -249,8 +317,11 @@ async function getEngine(moduleName, query, inject_env) {
         // 构建解析器文件路径
         const jxName = query.parse;
         const jxPath = path.join(options.jxDir, `${jxName}.js`);
-
-        const backResp = await drpyS.jx(jxPath, env, query);
+        const backResp = await withTimeout(
+            drpyS.jx(jxPath, env, query),
+            null,
+            `解析接口[${jxName}]`
+        );
 
         const statusCode = 200;
         const mediaType = 'application/json; charset=utf-8';
@@ -269,10 +340,10 @@ async function getEngine(moduleName, query, inject_env) {
                 backResp.msg = `${jxName}解析${msgState}`;
             }
 
+            backResp.type = `${mediaType}; charset=utf-8`;
             // 计算耗时
             let t2 = (new Date()).getTime();
             backResp.cost = t2 - t1;
-
             let backRespSend = backResp;
             console.log(backRespSend);
             return backRespSend;
@@ -288,7 +359,8 @@ async function getEngine(moduleName, query, inject_env) {
                 code: statusCode,
                 url: backResp,
                 msg: `${jxName}解析${msgState}`,
-                cost: t2 - t1
+                cost: t2 - t1,
+                type: `${mediaType}; charset=utf-8`
             }
 
             let backRespSend = result;
@@ -302,7 +374,8 @@ async function getEngine(moduleName, query, inject_env) {
                 code: 404,
                 url: "",
                 msg: `${jxName}解析失败`,
-                cost: t2 - t1
+                cost: t2 - t1,
+                type: `${mediaType}; charset=utf-8`
             }
             let backRespSend = result;
             console.log(backRespSend);
@@ -312,7 +385,11 @@ async function getEngine(moduleName, query, inject_env) {
 
     // 处理强制刷新初始化逻辑
     if ('refresh' in query) {
-        const refreshedObject = await apiEngine.init(modulePath, env, true);
+        const refreshedObject = await withTimeout(
+            apiEngine.init(modulePath, env, true),
+            null,
+            `初始化接口[${moduleName}]`
+        );
         const {context, ...responseObject} = refreshedObject;
         return responseObject;
     }
@@ -325,10 +402,18 @@ async function getEngine(moduleName, query, inject_env) {
     const filter = 'filter' in query ? query.filter : 1;
 
     // 获取首页数据
-    const resultHome = await apiEngine.home(modulePath, env, filter);
+    const resultHome = await withTimeout(
+        apiEngine.home(modulePath, env, filter),
+        null,
+        `首页接口[${moduleName}]`
+    );
 
     // 获取推荐数据
-    const resultHomeVod = await apiEngine.homeVod(modulePath, env);
+    const resultHomeVod = await withTimeout(
+        apiEngine.homeVod(modulePath, env),
+        null,
+        `推荐接口[${moduleName}]`
+    );
 
     // 合并结果
     let result = {

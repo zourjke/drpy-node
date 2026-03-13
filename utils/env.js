@@ -94,7 +94,7 @@ export const ENV = {
             return cache.get(key);
         }
         // console.log(`[get] 从文件中读取: ${key}`);
-        fastify.log.info(`[get] 从文件中读取: ${key}`);
+        // fastify.log.info(`[get] 从文件中读取: ${key}`);
         const envObj = this._readEnvFile();
         let value = envObj[key] || _value;
 
