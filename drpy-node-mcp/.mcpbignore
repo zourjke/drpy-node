@@ -1,0 +1,7 @@
+*
+!dist
+!dist/**
+!manifest.json
+!node_modules
+!node_modules/node-sqlite3-wasm
+!node_modules/node-sqlite3-wasm/**

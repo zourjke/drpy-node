@@ -1,0 +1,121 @@
+{
+  "dxt_version": "0.1",
+  "name": "drpy-node-mcp",
+  "display_name": "Drpy Node MCP",
+  "version": "1.0.0",
+  "description": "MCP server for drpy-node: spider development, debugging, and file management tools",
+  "long_description": "A comprehensive MCP server for drpy-node development. Provides tools for spider source management, rule debugging, file operations, database queries, and system configuration. Supports parsing HTML with drpy rules, validating spider syntax, and managing the drpy-node service.",
+  "homepage": "https://github.com/hjdhnx/drpy-node/tree/main/drpy-node-mcp",
+  "author": {
+    "name": "hjdhnx",
+    "url": "https://github.com/hjdhnx/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hjdhnx/drpy-node"
+  },
+  "documentation": "https://github.com/hjdhnx/drpy-node/tree/main/drpy-node-mcp#readme",
+  "license": "AGPL-3.0",
+  "keywords": [
+    "drpy-node"
+  ],
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/dist/index.js"
+      ],
+      "env": {}
+    }
+  },
+  "user_config": {
+    "ROOT": {
+      "type": "string",
+      "title": "Project Root Directory",
+      "description": "Absolute path to your drpy-node project root directory. Leave empty to use auto-detection (looks for .drpy-root marker file or parent directory).",
+      "default": "/Users/hiram/Data/code/drpy-node/",
+      "required": false
+    }
+  },
+  "tools": [
+    {
+      "name": "list_directory",
+      "description": "List files and directories in the project"
+    },
+    {
+      "name": "read_file",
+      "description": "Read the content of a file (automatically decodes DS sources)"
+    },
+    {
+      "name": "write_file",
+      "description": "Write content to a file (creates directories if needed)"
+    },
+    {
+      "name": "delete_file",
+      "description": "Delete a file or directory"
+    },
+    {
+      "name": "list_sources",
+      "description": "List all spider sources (js and catvod)"
+    },
+    {
+      "name": "get_routes_info",
+      "description": "Get information about registered routes/controllers"
+    },
+    {
+      "name": "fetch_spider_url",
+      "description": "Fetch a URL using drpy-node's request library to debug connectivity and anti-crawling measures"
+    },
+    {
+      "name": "debug_spider_rule",
+      "description": "Debug drpy spider rules by parsing HTML or fetching URL"
+    },
+    {
+      "name": "get_spider_template",
+      "description": "Get a standard template for creating a new drpy JS source"
+    },
+    {
+      "name": "get_drpy_libs_info",
+      "description": "Get information about available global helper functions and libraries in drpy environment"
+    },
+    {
+      "name": "validate_spider",
+      "description": "Validate a drpy spider file (syntax check + structure validation)"
+    },
+    {
+      "name": "check_syntax",
+      "description": "Check syntax of a JavaScript file"
+    },
+    {
+      "name": "sql_query",
+      "description": "Execute a read-only SQL query on the project database"
+    },
+    {
+      "name": "read_logs",
+      "description": "Read the latest application logs"
+    },
+    {
+      "name": "manage_config",
+      "description": "Read or update the project configuration"
+    },
+    {
+      "name": "restart_service",
+      "description": "Restart the drpy-node service"
+    }
+  ],
+  "tools_generated": false,
+  "prompts_generated": false,
+  "compatibility": {
+    "claude_desktop": ">=0.10.0",
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  }
+}

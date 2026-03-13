@@ -7,6 +7,7 @@ import zlib from 'zlib';
 import JSONbig from 'json-bigint';
 import forge from "node-forge";
 import * as minizlib from 'minizlib';
+import {LRUCache} from 'lru-cache';
 import * as utils from '../utils/utils.js';
 import * as misc from '../utils/misc.js';
 import COOKIE from '../utils/cookieManager.js';
@@ -69,9 +70,13 @@ const {
     createBasicAuthHeaders, get_size,
 } = utils;
 // 缓存已初始化的模块和文件 hash 值
-const moduleCache = new Map();
-const ruleObjectCache = new Map();
-const jxCache = new Map();
+const CACHE_OPTIONS = {
+    max: 100,
+    ttl: 1000 * 60 * 10, // 10分钟
+};
+const moduleCache = new LRUCache(CACHE_OPTIONS);
+const ruleObjectCache = new LRUCache(CACHE_OPTIONS);
+const jxCache = new LRUCache(CACHE_OPTIONS);
 
 // 记录当前请求会话的标识，用于判断是否需要清理缓存
 let currentSessionId = null;
@@ -146,180 +151,140 @@ try {
 globalThis.DataBase = DataBase;
 globalThis.database = database;
 
+// Static Sandbox Definitions
+const STATIC_UTILS_SANDBOX = {
+    sleep, sleepSync, utils, misc, computeHash, deepCopy, urljoin, urljoin2, joinUrl, naturalSort, $js,
+    createBasicAuthHeaders, get_size, $, getContentType, getMimeType, getParsesDict, getFirstLetter
+};
+
+const STATIC_DRPY_SANDBOX = {
+    jsp, pdfh, pd, pdfa, jsoup, pdfl, pjfh, pj, pjfa, pq, local, md5X, rsaX, aesX, desX, req, reqs,
+    toBeijingTime, _fetch, XMLHttpRequest, AIS, batchFetch, JSProxyStream, JSFile, js2Proxy, log, print,
+    jsonToCookie, cookieToJson, runMain, cachedRequest,
+};
+
+const STATIC_DRPY_CUSTOM_SANDBOX = {
+    MOBILE_UA, PC_UA, UA, UC_UA, IOS_UA, RULE_CK, CATE_EXCLUDE, TAB_EXCLUDE, OCR_RETRY, OCR_API, nodata,
+    SPECIAL_URL, setResult, setHomeResult, setResult2, urlDeal, tellIsJx, urlencode, encodeUrl,
+    uint8ArrayToBase64, Utf8ArrayToStr, gzip, ungzip, encodeStr, decodeStr, getCryptoJS, RSA, fixAdM3u8Ai,
+    forceOrder, getQuery, stringify, dealJson, OcrApi, getHome, buildUrl, keysToLowerCase, parseQueryString,
+    buildQueryString, encodeIfContainsSpecialChars, objectToQueryString, forge, lrcToSrt, strExtract,
+};
+
+const STATIC_LIBS_SANDBOX = {
+    matchesAll, cut, gbkTool, CryptoJS, JSEncrypt, NODERSA, pako, JSON5, jinja, template, batchExecute,
+    atob, btoa, base64Encode, base64Decode, md5, rc4Encrypt, rc4Decrypt, rc4, rc4_decode, randomUa,
+    jsonpath, hlsParser, axios, axiosX, URL, pathLib, executeParse, qs, Buffer, URLSearchParams, COOKIE,
+    ENV, _ENV, Quark, Baidu, Baidu2, UC, Ali, Cloud, Yun, Pan, createWebDAVClient, createFTPClient,
+    require: rootRequire, WebSocket, WebSocketServer, zlib, JSONbig, JsonBig, minizlib,
+    iconv: globalThis.iconv, cheerio: globalThis.cheerio,
+};
+
+// 合并所有静态沙箱对象，减少创建沙箱时的属性拷贝开销
+const GLOBAL_STATIC_SANDBOX = {
+    ...STATIC_UTILS_SANDBOX,
+    ...STATIC_DRPY_SANDBOX,
+    ...STATIC_DRPY_CUSTOM_SANDBOX,
+    ...STATIC_LIBS_SANDBOX,
+};
+
+// Precompiled Scripts
+const REQ_EXTEND_SCRIPT = new vm.Script(req_extend_code);
+const TEMPLATE_CHECK_FUNC_CODE = `
+globalThis._checkTemplateFunc = async function(html, parseRuleStr) {
+    try {
+        let p = parseRuleStr.split(';');
+        let p0 = p[0];
+        let is_json = p0.startsWith('json:');
+        p0 = p0.replace(/^(jsp:|json:|jq:)/, '');
+        let classes = [];
+        let $pdfa, $pdfh, $pd;
+        if (is_json) {
+            html = dealJson(html);
+            $pdfa = pjfa; $pdfh = pjfh; $pd = pj;
+        } else {
+            $pdfa = pdfa; $pdfh = pdfh; $pd = pd;
+        }
+        if (is_json) {
+            try {
+                let list = $pdfa(html, p0);
+                if (list && list.length > 0) classes = list;
+            } catch (e) { log('[handleTemplateInheritance] json分类解析失败:' + e.message); }
+        } else if (p.length >= 3) {
+            try {
+                let list = $pdfa(html, p0);
+                if (list && list.length > 0) {
+                    for (const it of list) {
+                        try {
+                            let name = $pdfh(it, p[1]);
+                            let url = $pd(it, p[2]);
+                            if (p.length > 3 && p[3]) {
+                                let exp = new RegExp(p[3]);
+                                let match = url.match(exp);
+                                if (match && match[1]) url = match[1];
+                            }
+                            if (name.trim()) classes.push({ 'type_id': url.trim(), 'type_name': name.trim() });
+                        } catch (e) { log('[handleTemplateInheritance] 分类列表解析元素失败:' + e.message); }
+                    }
+                }
+            } catch (e) { log('[handleTemplateInheritance] 分类列表解析失败:' + e.message); }
+        }
+        return { class: classes };
+    } catch (e) {
+        log('[handleTemplateInheritance] 模板测试执行错误:', e.message);
+        return { class: [] };
+    }
+};
+`;
+// 将 ES6 扩展和模板检查函数合并为一个脚本，减少 runInContext 调用次数
+const SANDBOX_INIT_CODE = es6_extend_code + '\n' + TEMPLATE_CHECK_FUNC_CODE;
+const SANDBOX_INIT_SCRIPT = new vm.Script(SANDBOX_INIT_CODE);
+
+const TEMPLATE_CHECK_CALL_SCRIPT = new vm.Script(`_checkTemplateFunc(globalThis._tempHtml, globalThis._tempParse)`);
+const CACHED_REQUEST_SCRIPT = new vm.Script(`
+(async function() {
+    try {
+        return await cachedRequest(request, globalThis._tempHost, globalThis._tempHeaders, 'host');
+    } catch (e) {
+        log('[handleTemplateInheritance] 获取HOST页面失败:', e.message);
+        return '';
+    }
+})()
+`);
+
+// 预编译 initParse 中的静态脚本
+const INIT_HEADERS_SCRIPT = new vm.Script(`
+globalThis.oheaders = rule.oheaders
+globalThis.rule_fetch_params = rule.rule_fetch_params;
+`);
+
+const INIT_JSOUP_SCRIPT = new vm.Script(`
+globalThis.jsp = new jsoup(rule.host||'');
+globalThis.pdfh = pdfh;
+globalThis.pd = pd;
+globalThis.pdfa = pdfa;
+globalThis.HOST = rule.host||'';
+`);
+
 
 export async function getSandbox(env = {}) {
     const {getProxyUrl, requestHost, hostUrl, fServer} = env;
     // (可选) 加载所有 wasm 文件
     await CryptoJSW.loadAllWasm();
-    const utilsSanbox = {
-        sleep,
-        sleepSync,
-        utils,
-        misc,
-        computeHash,
-        deepCopy,
-        urljoin,
-        urljoin2,
-        joinUrl,
-        naturalSort,
-        $js,
-        createBasicAuthHeaders,
-        get_size,
-        $,
-        pupWebview,
-        getProxyUrl,
-        requestHost,
-        hostUrl,
-        fServer,
-        getContentType,
-        getMimeType,
-        getParsesDict,
-        getFirstLetter
-    };
-    const drpySanbox = {
-        jsp,
-        pdfh,
-        pd,
-        pdfa,
-        jsoup,
-        pdfl,
-        pjfh,
-        pj,
-        pjfa,
-        pq,
-        local,
-        md5X,
-        rsaX,
-        aesX,
-        desX,
-        req,
-        reqs,
-        toBeijingTime,
-        _fetch,
-        XMLHttpRequest,
-        simplecc,
-        AIS,
-        batchFetch,
-        JSProxyStream,
-        JSFile,
-        js2Proxy,
-        log,
-        print,
-        jsonToCookie,
-        cookieToJson,
-        runMain,
-        cachedRequest, // 添加cachedRequest函数到沙箱中
-    };
-    const drpyCustomSanbox = {
-        MOBILE_UA,
-        PC_UA,
-        UA,
-        UC_UA,
-        IOS_UA,
-        RULE_CK,
-        CATE_EXCLUDE,
-        TAB_EXCLUDE,
-        OCR_RETRY,
-        OCR_API,
-        nodata,
-        SPECIAL_URL,
-        setResult,
-        setHomeResult,
-        setResult2,
-        urlDeal,
-        tellIsJx,
-        urlencode,
-        encodeUrl,
-        uint8ArrayToBase64,
-        Utf8ArrayToStr,
-        gzip,
-        ungzip,
-        encodeStr,
-        decodeStr,
-        getCryptoJS,
-        RSA,
-        fixAdM3u8Ai,
-        forceOrder,
-        getQuery,
-        stringify,
-        dealJson,
-        OcrApi,
-        getHome,
-        buildUrl,
-        keysToLowerCase,
-        parseQueryString,
-        buildQueryString,
-        encodeIfContainsSpecialChars,
-        objectToQueryString,
-        forge,
-        lrcToSrt,
-        strExtract,
-    };
 
-    const libsSanbox = {
-        matchesAll,
-        cut,
-        gbkTool,
-        CryptoJS,
+    // 动态库依赖
+    const dynamicLibsSandbox = {
         CryptoJSW,
-        JSEncrypt,
-        NODERSA,
-        pako,
-        JSON5,
-        jinja,
-        template,
-        batchExecute,
-        atob,
-        btoa,
-        base64Encode,
-        base64Decode,
-        md5,
-        rc4Encrypt,
-        rc4Decrypt,
-        rc4,
-        rc4_decode,
-        randomUa,
-        jsonpath,
-        hlsParser,
-        axios,
-        axiosX,
-        URL,
-        pathLib,
-        executeParse,
-        qs,
-        Buffer,
-        URLSearchParams,
-        COOKIE,
-        ENV,
-        _ENV,
-        Quark,
-        Baidu,
-        Baidu2,
-        UC,
-        Ali,
-        Cloud,
-        Yun,
-        Pan,
-        createWebDAVClient,
-        createFTPClient,
         DataBase,
         database,
-        require: rootRequire,
-        WebSocket,
-        WebSocketServer,
-        zlib,
-        JSONbig,
-        JsonBig,
-        minizlib,
+        simplecc,
         iconv: globalThis.iconv,
         cheerio: globalThis.cheerio,
     };
 
-    // 创建一个沙箱上下文，注入需要的全局变量和函数
     const sandbox = {
         console,      // 将 console 注入沙箱，便于调试
-        // eval,    // 直接引入原生 eval(不要这样用，环境是隔离的会导致执行不符合预期，需要包装)
-        WebAssembly, // 允许使用原生 WebAssembly(这里即使不引用也可以在沙箱里用这个变量。写在这里骗骗自己吧)
+        WebAssembly, // 允许使用原生 WebAssembly
         setTimeout,   // 注入定时器方法
         setInterval,
         clearTimeout,
@@ -335,16 +300,19 @@ export async function getSandbox(env = {}) {
         }, // 用于导出解析的默认函数
         _asyncGetRule: null,
         _asyncGetLazy: null,
-        ...utilsSanbox,
-        ...drpySanbox,
-        ...drpyCustomSanbox,
-        ...libsSanbox,
+        ...GLOBAL_STATIC_SANDBOX, // 使用预合并的静态沙箱
+        // 直接注入环境相关的工具函数，避免创建中间对象 dynamicUtilsSandbox
+        pupWebview,
+        getProxyUrl,
+        requestHost,
+        hostUrl,
+        fServer,
+        ...dynamicLibsSandbox,
     };
     // 创建一个上下文
     const context = vm.createContext(sandbox);
-    // 注入扩展代码到沙箱中
-    const polyfillsScript = new vm.Script(es6_extend_code);
-    polyfillsScript.runInContext(context);
+    // 注入扩展代码到沙箱中 (ES6扩展 + 模板检查函数)
+    SANDBOX_INIT_SCRIPT.runInContext(context);
 
     // 设置沙箱到全局 $
     sandbox.$.setSandbox(sandbox);
@@ -447,8 +415,7 @@ export async function init(filePath, env = {}, refresh) {
         sandbox.rule = result;
 
         // rule注入完毕后添加自定义req扩展request方法进入规则,这个代码里可以直接获取rule的任意对象，而且还是独立隔离的
-        const reqExtendScript = new vm.Script(req_extend_code);
-        reqExtendScript.runInContext(context);
+        REQ_EXTEND_SCRIPT.runInContext(context);
         // 注意：不再直接挂载request/post函数到rule对象，避免内存占用和破坏沙箱隔离
         // 解析函数将通过executeSandboxFunction在沙箱内调用request/post
 
@@ -486,6 +453,11 @@ export async function init(filePath, env = {}, refresh) {
         // 清理原始rule对象以减少内存占用
         // 由于已经深拷贝到moduleObject，原始rule不再需要
         // delete sandbox.rule;
+
+        // 清理沙箱中的临时构建变量
+        delete sandbox._asyncGetRule;
+        delete sandbox.module;
+        delete sandbox.exports;
 
         // 缓存模块和文件的 hash 值
         moduleCache.set(hashMd5, {moduleObject, hash: fileHash});
@@ -542,6 +514,11 @@ export async function getRuleObject(filePath, env, refresh) {
         // 由于已经深拷贝到ruleObject，原始rule不再需要
         // delete sandbox.rule;
 
+        // 清理沙箱中的临时构建变量
+        delete sandbox._asyncGetRule;
+        delete sandbox.module;
+        delete sandbox.exports;
+
         // 缓存模块和文件的 hash 值
         ruleObjectCache.set(filePath, {ruleObject, hash: fileHash});
         return ruleObject
@@ -585,12 +562,17 @@ export async function initJx(filePath, env, refresh) {
         const jxResult = await sandbox._asyncGetLazy;
         sandbox.lazy = jxResult.lazy;
         sandbox.jx = jxResult.jx;
-        const reqExtendScript = new vm.Script(req_extend_code);
-        reqExtendScript.runInContext(context);
+        REQ_EXTEND_SCRIPT.runInContext(context);
         let t2 = getNowTime();
         const jxObj = {...sandbox.jx, lazy: sandbox.lazy};
         const cost = t2 - t1;
         log(`[initJx] 加载解析:${filePath} 耗时 ${cost}毫秒`)
+
+        // 清理沙箱中的临时构建变量
+        delete sandbox._asyncGetLazy;
+        delete sandbox.module;
+        delete sandbox.exports;
+
         jxCache.set(hashMd5, {jxObj, hash: fileHash});
         return jxObj;
     } catch (error) {
@@ -850,11 +832,7 @@ async function initParse(rule, env, vm, context) {
     // 新版放入规则内部
     rule.oheaders = deepCopy(rule.headers);
     rule.rule_fetch_params = {'headers': rule.headers, 'timeout': rule.timeout, 'encoding': rule.encoding};
-    const originalScript = new vm.Script(`
-globalThis.oheaders = rule.oheaders
-globalThis.rule_fetch_params = rule.rule_fetch_params;
-        `);
-    originalScript.runInContext(context);
+    INIT_HEADERS_SCRIPT.runInContext(context);
 
     // 检查并执行 `预处理` 方法
     if (typeof rule.预处理 === 'function') {
@@ -862,14 +840,7 @@ globalThis.rule_fetch_params = rule.rule_fetch_params;
         await rule.预处理(env);
     }
 
-    const otherScript = new vm.Script(`
-globalThis.jsp = new jsoup(rule.host||'');
-globalThis.pdfh = pdfh;
-globalThis.pd = pd;
-globalThis.pdfa = pdfa;
-globalThis.HOST = rule.host||'';
-        `);
-    otherScript.runInContext(context);
+    INIT_JSOUP_SCRIPT.runInContext(context);
     return rule
 }
 
@@ -1009,11 +980,12 @@ export function clearAllCache() {
     const excludeList = ['APP模板配置'];
     let clearedCount = 0;
 
-    // 清理moduleCache，跳过排除列表中的模块  
+    // 清理moduleCache，跳过排除列表中的模块
+    const moduleKeysToDelete = [];
     for (const [key, value] of moduleCache.entries()) {
         let shouldSkip = false;
 
-        // 检查是否在排除列表中  
+        // 检查是否在排除列表中
         for (const excludeName of excludeList) {
             if (value.moduleObject && value.moduleObject.title &&
                 value.moduleObject.title.includes(excludeName)) {
@@ -1024,12 +996,16 @@ export function clearAllCache() {
         }
 
         if (!shouldSkip) {
-            moduleCache.delete(key);
-            clearedCount++;
+            moduleKeysToDelete.push(key);
         }
     }
+    moduleKeysToDelete.forEach(key => {
+        moduleCache.delete(key);
+        clearedCount++;
+    });
 
-    // 清理ruleObjectCache，跳过排除列表中的模块  
+    // 清理ruleObjectCache，跳过排除列表中的模块
+    const ruleKeysToDelete = [];
     for (const [filePath, value] of ruleObjectCache.entries()) {
         let shouldSkip = false;
 
@@ -1042,12 +1018,16 @@ export function clearAllCache() {
         }
 
         if (!shouldSkip) {
-            ruleObjectCache.delete(filePath);
-            clearedCount++;
+            ruleKeysToDelete.push(filePath);
         }
     }
+    ruleKeysToDelete.forEach(key => {
+        ruleObjectCache.delete(key);
+        clearedCount++;
+    });
 
-    // 清理jxCache，跳过排除列表中的模块  
+    // 清理jxCache，跳过排除列表中的模块
+    const jxKeysToDelete = [];
     for (const [key, value] of jxCache.entries()) {
         let shouldSkip = false;
 
@@ -1060,10 +1040,13 @@ export function clearAllCache() {
         }
 
         if (!shouldSkip) {
-            jxCache.delete(key);
-            clearedCount++;
+            jxKeysToDelete.push(key);
         }
     }
+    jxKeysToDelete.forEach(key => {
+        jxCache.delete(key);
+        clearedCount++;
+    });
 
     // 清理页面请求缓存
     pageRequestCache.clear();
@@ -1138,22 +1121,16 @@ async function handleTemplateInheritance(rule, context) {
         if (rule['模板'] === '自动') {
             try {
                 let host_headers = rule['headers'] || {};
-                const cacheKey = md5(rule.host + JSON.stringify(host_headers));
 
                 // 使用cachedRequest统一缓存管理，避免重复缓存
                 log(`[handleTemplateInheritance] 请求HOST页面: ${rule.host}`);
-                // 使用通用沙箱函数执行cachedRequest
-                const script = new vm.Script(`
-                    (async function() {
-                        try {
-                            return await cachedRequest(request, '${rule.host}', ${JSON.stringify({headers: host_headers})}, 'host');
-                        } catch (e) {
-                            log('[handleTemplateInheritance] 获取HOST页面失败:', e.message);
-                            return '';
-                        }
-                    })()
-                `);
-                let host_html = await script.runInContext(context);
+
+                // 设置临时变量
+                context._tempHost = rule.host;
+                context._tempHeaders = host_headers;
+
+                // 执行预编译脚本
+                let host_html = await CACHED_REQUEST_SCRIPT.runInContext(context);
 
                 let match_muban = '';
                 let muban_keys = Object.keys(muban).filter(it => !/默认|短视2|采集1/.test(it));
@@ -1164,84 +1141,12 @@ async function handleTemplateInheritance(rule, context) {
                         if (muban[muban_key].class_parse) {
                             let class_parse = muban[muban_key].class_parse;
 
-                            // 直接在context中执行class_parse代码进行测试
-                            const testScript = new vm.Script(`
-                                  (async function() {
-                                      try {
-                                          let html = ${JSON.stringify(host_html)};
-                                          let p = ${JSON.stringify(class_parse)};
-                                          let classes = [];
-                                          
-                                          // 处理class_parse字符串解析
-                                          p = p.split(';');
-                                          let p0 = p[0];
-                                          let is_json = p0.startsWith('json:');
-                                          p0 = p0.replace(/^(jsp:|json:|jq:)/, '');
-                                          
-                                          if (html) {
-                                              let $pdfa, $pdfh, $pd;
-                                              if (is_json) {
-                                                  html = dealJson(html);
-                                                  $pdfa = pjfa;
-                                                  $pdfh = pjfh;
-                                                  $pd = pj;
-                                              } else {
-                                                  $pdfa = pdfa;
-                                                  $pdfh = pdfh;
-                                                  $pd = pd;
-                                              }
-                                              
-                                              if (is_json) {
-                                                  try {
-                                                      let list = $pdfa(html, p0);
-                                                      if (list && list.length > 0) {
-                                                          classes = list;
-                                                      }
-                                                  } catch (e) {
-                                                      log('[handleTemplateInheritance] json分类解析失败:' + e.message);
-                                                  }
-                                              } else if (p.length >= 3) {
-                                                  try {
-                                                      let list = $pdfa(html, p0);
-                                                      if (list && list.length > 0) {
-                                                          for (const it of list) {
-                                                              try {
-                                                              //log('[handleTemplateInheritance] test it:',it);
-                                                                  let name = $pdfh(it, p[1]);
-                                                                  let url = $pd(it, p[2]);
-                                                                  if (p.length > 3 && p[3]) {
-                                                                      let exp = new RegExp(p[3]);
-                                                                      let match = url.match(exp);
-                                                                      if (match && match[1]) {
-                                                                          url = match[1];
-                                                                      }
-                                                                  }
-                                                                  if (name.trim()) {
-                                                                      classes.push({
-                                                                          'type_id': url.trim(),
-                                                                          'type_name': name.trim()
-                                                                      });
-                                                                  }
-                                                              } catch (e) {
-                                                                  log('[handleTemplateInheritance] 分类列表解析元素失败:' + e.message);
-                                                              }
-                                                          }
-                                                      }
-                                                  } catch (e) {
-                                                      log('[handleTemplateInheritance] 分类列表解析失败:' + e.message);
-                                                  }
-                                              }
-                                          }
-                                          
-                                          return { class: classes };
-                                      } catch (e) {
-                                          log('[handleTemplateInheritance] 模板测试执行错误:', e.message);
-                                          return { class: [] };
-                                      }
-                                  })()
-                              `);
+                            // 设置临时变量
+                            context._tempHtml = host_html;
+                            context._tempParse = class_parse;
 
-                            const host_data = await testScript.runInContext(context);
+                            // 执行预编译脚本
+                            const host_data = await TEMPLATE_CHECK_CALL_SCRIPT.runInContext(context);
 
                             if (host_data.class && host_data.class.length > 0) {
                                 match_muban = muban_key;
@@ -1288,6 +1193,12 @@ async function handleTemplateInheritance(rule, context) {
         // 清理模板相关属性
         delete rule['模板'];
         delete rule['模板修改'];
+
+        // 清理临时变量
+        delete context._tempHost;
+        delete context._tempHeaders;
+        delete context._tempHtml;
+        delete context._tempParse;
 
     } catch (error) {
         log('[handleTemplateInheritance] 模板继承处理失败:', error.message);
