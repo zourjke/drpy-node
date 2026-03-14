@@ -406,6 +406,7 @@ class UCHandler {
                     // 收集子目录
                     subDir.push(item);
                 } else if (item.file === true && item.obj_category === 'video') {
+                    let text = /[#|'"\[\]&<>]/g;
                     // 过滤小于5MB的视频文件
                     if (item.size < 1024 * 1024 * 5) continue;
                     item.stoken = this.shareTokenCache[shareData.shareId].stoken;

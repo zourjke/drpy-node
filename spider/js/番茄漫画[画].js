@@ -14,8 +14,8 @@
 var rule = {
     类型: '漫画',
     title: '番茄漫画',
-    // host: 'https://qkfqapi.vv9v.cn',
-    host: 'http://47.108.80.161:5005',
+    host: 'https://qkfqapi.vv9v.cn',
+    // host: 'http://47.108.80.161:5005',
     homeUrl: '/api/discover/style?tab=漫画',
     url: 'fyclass',
     searchUrl: '/api/search?key=**&tab_type=8&offset=((fypage-1)*10)',

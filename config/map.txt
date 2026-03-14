@@ -18,6 +18,7 @@ emby@@{"server":"http://139.9.106.196:2345","username":"kid","password":""}@@小
 采集之王[合]@@?type=url&params=../json/采集[密]静态.json$1$@@采王成人[密]
 采集之王[合]@@?type=url&params=../json/采集2024静态.json$1$@@采王2024
 采集之王[合]@@?type=url&params=../json/采集2025静态.json$1$@@采王2025
+采集之王[合]@@?type=url&params=../json/采集2026静态.json$1$@@采王2026
 UC分享@@?type=url&params=../json/UC分享.json@@UC分享[盘]
 16wMV[听]@@?type=url&params=../json/十六万歌曲.txt
 点歌欢唱[B]@@?type=url&params=../json/十六万歌曲.txt

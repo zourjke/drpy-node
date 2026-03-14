@@ -339,22 +339,30 @@ var rule = {
             let downUrl = ''
             if (flag.startsWith('Quark-')) {
                 log("夸克网盘解析开始")
-                const down = await Quark.getDownload(ids[0], ids[1], ids[2], ids[3], true);
                 const headers = {
                     // 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 QuarkPC/4.5.5.535 quark-cloud-drive/2.5.40 Channel/pckk_other_ch',
                     // 'origin': 'https://pan.quark.cn',
                     // 'referer': 'https://pan.quark.cn/',
                     'Cookie': ENV.get('quark_cookie')
                 };
+                //无限不转存
+                const link = await Quark.getUrl(ids[0], ids[1], ids[2], ids[3]);
+                link.forEach(item => {
+                    if (item !== undefined) {
+                        urls.push("无限" + item.name, item.url + "#isVideo=true##fastPlayMode##threads=20#")
+                        urls.push("无限猫" + item.name, `http://127.0.0.1:5575/proxy?thread=${ENV.get('thread') || 6}&chunkSize=256&url=` + encodeURIComponent(item.url) + '&header=' + encodeURIComponent(JSON.stringify(headers)));
+                    }
+                });
+                const down = await Quark.getDownload(ids[0], ids[1], ids[2], ids[3], true);
                 down.forEach((t) => {
-                    if(t.url!==undefined){
-                        urls.push("猫"+t.name, `http://127.0.0.1:5575/proxy?thread=${ENV.get('thread') || 6}&chunkSize=256&url=` + encodeURIComponent(t.url));
-                        urls.push(t.name, t.url+ "#isVideo=true##fastPlayMode##threads=20#")
+                    if (t.url !== undefined) {
+                        urls.push("猫" + t.name, `http://127.0.0.1:5575/proxy?thread=${ENV.get('thread') || 6}&chunkSize=256&url=` + encodeURIComponent(t.url));
+                        urls.push(t.name, t.url + "#isVideo=true##fastPlayMode##threads=20#")
                     }
                 });
                 const transcoding = (await Quark.getLiveTranscoding(ids[0], ids[1], ids[2], ids[3])).filter((t) => t.accessable);
                 transcoding.forEach((t) => {
-                    urls.push(t.resolution === 'low' ? "流畅" : t.resolution === 'high' ? "高清" : t.resolution === 'super' ? "超清" : t.resolution, t.video_info.url+ "#isVideo=true##fastPlayMode##threads=20#")
+                    urls.push(t.resolution === 'low' ? "流畅" : t.resolution === 'high' ? "高清" : t.resolution === 'super' ? "超清" : t.resolution, t.video_info.url + "#isVideo=true##fastPlayMode##threads=20#")
                 });
                 // urls.push("原画", down.download_url + '#fastPlayMode##threads=10#');
                 // urls.push("原代服", mediaProxyUrl + `?thread=${ENV.get('thread') || 6}&form=urlcode&randUa=1&url=` + encodeURIComponent(down.download_url) + '&header=' + encodeURIComponent(JSON.stringify(headers)));

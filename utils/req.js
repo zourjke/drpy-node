@@ -110,50 +110,50 @@ export const reqs = new _axios.create({
 });
 
 // Add System Proxy & DOH interceptor to reqs as well
-reqs.interceptors.request.use(async config => {
-    if (!config.url) return config;
-    try {
-        // 1. Check System Proxy
-        const proxy = await getSystemProxy();
-        if (proxy) {
-            const agent = new HttpsProxyAgent(proxy);
-            config.httpsAgent = agent;
-            config.proxy = false;
-            return config;
-        }
-
-        // 2. DOH
-        let fullUrl = config.url;
-        if (config.baseURL && !/^https?:\/\//i.test(fullUrl)) {
-            try {
-                const parsed = new URL(fullUrl, config.baseURL);
-                fullUrl = parsed.toString();
-            } catch (e) {
-            }
-        }
-        const urlObj = new URL(fullUrl);
-        const hostname = urlObj.hostname;
-        if (!hostname || /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) || hostname === 'localhost') return config;
-        const ip = await resolveDoh(hostname);
-        if (ip && ip !== hostname) {
-            if (!config.headers) config.headers = {};
-            let hasHost = false;
-            const keys = Object.keys(config.headers);
-            for (const k of keys) {
-                if (k.toLowerCase() === 'host') {
-                    hasHost = true;
-                    break;
-                }
-            }
-            if (!hasHost) config.headers.Host = hostname;
-            urlObj.hostname = ip;
-            config.url = urlObj.toString();
-            if (config.baseURL) delete config.baseURL;
-        }
-    } catch (e) {
-    }
-    return config;
-});
+// reqs.interceptors.request.use(async config => {
+//     if (!config.url) return config;
+//     try {
+//         // 1. Check System Proxy
+//         const proxy = await getSystemProxy();
+//         if (proxy) {
+//             const agent = new HttpsProxyAgent(proxy);
+//             config.httpsAgent = agent;
+//             config.proxy = false;
+//             return config;
+//         }
+//
+//         // 2. DOH
+//         let fullUrl = config.url;
+//         if (config.baseURL && !/^https?:\/\//i.test(fullUrl)) {
+//             try {
+//                 const parsed = new URL(fullUrl, config.baseURL);
+//                 fullUrl = parsed.toString();
+//             } catch (e) {
+//             }
+//         }
+//         const urlObj = new URL(fullUrl);
+//         const hostname = urlObj.hostname;
+//         if (!hostname || /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) || hostname === 'localhost') return config;
+//         const ip = await resolveDoh(hostname);
+//         if (ip && ip !== hostname) {
+//             if (!config.headers) config.headers = {};
+//             let hasHost = false;
+//             const keys = Object.keys(config.headers);
+//             for (const k of keys) {
+//                 if (k.toLowerCase() === 'host') {
+//                     hasHost = true;
+//                     break;
+//                 }
+//             }
+//             if (!hasHost) config.headers.Host = hostname;
+//             urlObj.hostname = ip;
+//             config.url = urlObj.toString();
+//             if (config.baseURL) delete config.baseURL;
+//         }
+//     } catch (e) {
+//     }
+//     return config;
+// });
 
 // 导出默认的HTTP请求客户端
 export default req;

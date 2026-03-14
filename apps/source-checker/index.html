@@ -523,22 +523,36 @@ class SourceChecker {
         // 2. 如果推荐接口异常，检测一级分类接口
         let categorySuccess = false;
         if (homeResult.data && homeResult.data.class && homeResult.data.class.length > 0) {
-            const firstCategory = homeResult.data.class[0];
-            if (firstCategory.type_id) {
+            // 尝试检测前两个分类（容错机制）
+            const categoriesToCheck = homeResult.data.class.slice(0, 2);
+            
+            for (let i = 0; i < categoriesToCheck.length; i++) {
+                const category = categoriesToCheck[i];
+                if (!category.type_id) continue;
+
                 const cateResult = await this.testApi(source.api, {
                     ac: 'list',
-                    t: firstCategory.type_id,
+                    t: category.type_id,
                     pg: 1,
                     extend
                 });
-                result.details.category = cateResult;
+                
+                // 记录结果：如果是第一个，直接记录；如果是后续且成功了，也记录覆盖
+                if (i === 0 || (cateResult.success && this.isValidData(cateResult.data))) {
+                    result.details.category = cateResult;
+                }
                 
                 categorySuccess = cateResult.success && this.isValidData(cateResult.data);
                 if (categorySuccess) {
                     result.status = 'success';
-                    result.message = '分类接口正常';
-                    this.log(`${source.name}: 分类接口正常`, 'success');
+                    result.message = `分类接口正常${i > 0 ? ' (容错:分类2)' : ''}`;
+                    this.log(`${source.name}: 分类接口正常${i > 0 ? ' (容错:分类2)' : ''}`, 'success');
                     return;
+                } else {
+                    // 如果是第一个失败且还有下一个，记录日志
+                    if (i === 0 && categoriesToCheck.length > 1) {
+                        this.log(`${source.name}: 分类1无数据，尝试容错检测分类2...`, 'warning');
+                    }
                 }
             }
         }

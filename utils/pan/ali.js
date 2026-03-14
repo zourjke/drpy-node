@@ -511,7 +511,7 @@ class AliDrive {
                 if (item.type === 'folder') {
                     subDir.push(item);
                 } else if (item.type === 'file' && item.category === 'video') {
-                    let text = /[#|'"\[\]&<>]/g
+                    let text = /[#|'"\[\]&<>]/g;
                     if (item.size < 1024 * 1024 * 5) continue;
                     item.name = item.name.replace(/玩偶哥.*【神秘的哥哥们】/g, '');
                     item.name = text.test(item.name) ? item.name.replace(text, '') : item.name

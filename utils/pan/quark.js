@@ -17,7 +17,7 @@
  * @since 1.0.0
  */
 
-import req from '../req.js';
+import {reqs} from '../req.js';
 import {ENV} from '../env.js';
 import COOKIE from '../cookieManager.js';
 import CryptoJS from "crypto-js";
@@ -143,16 +143,16 @@ class QuarkHandler {
      * @returns {Promise<void>}
      */
     async initQuark() {
-        if (this.token) {
-            let exp = JSON.parse(CryptoJS.enc.Base64.parse(this.token.split('.')[1]).toString(CryptoJS.enc.Utf8))
-            let now = Math.floor(Date.now() / 1000)
-            if (exp.exp < now) {
-                console.log('登录状态已过期,重新登录,请及时更换Token')
-            } else {
-                console.log('登录成功，继续使用,可使用时间截止到：' + (new Date(exp.exp * 1000)).toLocaleString())
-                console.log('QuarkTV token获取成功：' + this.token)
-            }
-        }
+        // if(this.token){
+        //     let exp = JSON.parse(CryptoJS.enc.Base64.parse(this.token.split('.')[1]).toString(CryptoJS.enc.Utf8))
+        //     let now = Math.floor(Date.now() / 1000)
+        //     if (exp.exp < now) {
+        //         console.log('登录状态已过期,重新登录,请及时更换Token')
+        //     } else {
+        //         console.log('登录成功，继续使用,可使用时间截止到：' + (new Date(exp.exp * 1000)).toLocaleString())
+        //         console.log('QuarkTV token获取成功：' + this.token)
+        //     }
+        // }
         if (this.cookie) {
             console.log("cookie 获取成功");
         } else {
@@ -335,12 +335,12 @@ class QuarkHandler {
         let link = `${this.apiUrl}/${url}`
         // 发送请求 - 根据方法类型选择GET或POST请求
         const resp =
-            method === 'get' ? await req.get(link, {
+            method === 'get' ? await reqs.get(link, {
                 headers: headers,
             }).catch((err) => {
                 console.error(err.message);
                 return err.response || {status: 500, data: {}};
-            }) : await req.post(link, data, {
+            }) : await reqs.post(link, data, {
                 headers: headers,
             }).catch((err) => {
                 console.error(err.message);
@@ -650,7 +650,6 @@ class QuarkHandler {
         const resCookie = cookieResDataSelf['set-cookie'];
         if (!resCookie) {
             console.log(`${from}自动更新夸克 cookie: 没返回新的cookie`);
-
             return
         }
         const cookieObject = COOKIE.parse(resCookie);
@@ -719,40 +718,43 @@ class QuarkHandler {
         return CryptoJS.SHA256(data).toString();
     }
 
-    async refreshToken() {
-        let data = JSON.stringify({
-            "req_id": reqId,
-            "app_ver": this.conf.appVer,
-            "device_id": deviceID,
-            "device_brand": "OPPO",
-            "platform": "tv",
-            "device_name": "PCRT00",
-            "device_model": "PCRT00",
-            "build_device": "aosp",
-            "build_product": "PCRT00",
-            "device_gpu": "Adreno%20(TM)%20640",
-            "activity_rect": "%7B%7D",
-            "channel": this.conf.channel,
-            "refresh_token": this.token
-        });
-        let config = {
-            method: 'POST',
-            url: 'http://api.extscreen.com/quarkdrive',
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Linux; U; Android 7.1.2; zh-cn; PCRT00 Build/N2G47O) AppleWebKit/533.1 (KHTML, like Gecko) Mobile Safari/533.1',
-                'Connection': 'Keep-Alive',
-                'Accept-Encoding': 'gzip',
-                'Content-Type': 'application/json',
-                'Cookie': 'sl-session=VIaxTAKF8mdJBhU2uda0zA=='
-            },
-            data: data
-        };
-        let req = await axios.request(config);
-        if (req.status === 200) {
-            ENV.set('uc_token_cookie', req.data.data.refresh_token)
-            return await this.getDownload(shareId, stoken, fileId, fileToken, clean)
-        }
-    }
+    // async refreshToken(shareId, stoken, fileId, fileToken, clean){
+    //     const timestamp = Math.floor(Date.now() / 1000).toString() + '000'; // 13位时间戳需调整
+    //     const deviceID = this.Addition.DeviceID || this.generateDeviceID(timestamp);
+    //     const reqId = this.generateReqId(deviceID, timestamp);
+    //     let data = JSON.stringify({
+    //         "req_id": reqId,
+    //         "app_ver": this.conf.appVer,
+    //         "device_id": deviceID,
+    //         "device_brand": "OPPO",
+    //         "platform": "tv",
+    //         "device_name": "PCRT00",
+    //         "device_model": "PCRT00",
+    //         "build_device": "aosp",
+    //         "build_product": "PCRT00",
+    //         "device_gpu": "Adreno%20(TM)%20640",
+    //         "activity_rect": "%7B%7D",
+    //         "channel": this.conf.channel,
+    //         "refresh_token": this.token
+    //     });
+    //     let config = {
+    //         method: 'POST',
+    //         url: 'http://api.extscreen.com/quarkdrive',
+    //         headers: {
+    //             'User-Agent': 'Mozilla/5.0 (Linux; U; Android 7.1.2; zh-cn; PCRT00 Build/N2G47O) AppleWebKit/533.1 (KHTML, like Gecko) Mobile Safari/533.1',
+    //             'Connection': 'Keep-Alive',
+    //             'Accept-Encoding': 'gzip',
+    //             'Content-Type': 'application/json',
+    //             'Cookie': 'sl-session=VIaxTAKF8mdJBhU2uda0zA=='
+    //         },
+    //         data: data
+    //     };
+    //     let req = await axios.request(config);
+    //     if(req.status === 200) {
+    //         ENV.set('quark_token_cookie',req.data.data.refresh_token)
+    //         return await this.getDownload(shareId, stoken, fileId, fileToken, clean)
+    //     }
+    // }
 
     async getDownload(shareId, stoken, fileId, fileToken, clean) {
         await this.initQuark()
@@ -1000,10 +1002,83 @@ class QuarkHandler {
 
     }
 
+    async getToken() {
+        let t = Math.floor(new Date().getTime() / 1e3)
+
+        let data = JSON.stringify({
+            "conversation_id": "300000" + t,
+            "conversation_type": 3,
+            "msg_id": t + "000"
+        });
+
+        let config = {
+            method: 'POST',
+            url: 'https://drive-social-api.quark.cn/1/clouddrive/chat/conv/file/acquire_dl_token?pr=ucpro&fr=pc&sys=darwin&ve=3.19',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) quark-cloud-drive/3.23.2 Chrome/112.0.5615.165 Electron/24.1.3.8 Safari/537.36 Channel/pckk_other_ch',
+                'Connection': 'keep-alive',
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Content-Type': 'application/json',
+                'accept-language': 'zh-CN',
+                'origin': 'https://pan.quark.cn',
+                'sec-fetch-dest': 'empty',
+                'sec-fetch-mode': 'cors',
+                'sec-fetch-site': 'cross-site',
+                'sec-ch-ua': '"Not:A-Brand";v="99", "Chromium";v="112"',
+                'sec-ch-ua-mobile': '?0',
+                'sec-ch-ua-platform': '"Windows"',
+                'referer': 'https://pan.quark.cn/',
+                'Cookie': '_UP_A4A_11_=wb9ce1f8a7f74209b248cb5877a6a876; _UP_D_=pc; tfstk=gy2rZY6dQTBPmYbgblDFQOhX71M-pv7_ZJgIxkqnV40oVYZ3gkZN2Da7x2PEoyIJFYbJK2qTkbguRYTFLrko97gIP2kUvPSf5O6_2uHKEN_1C6GsZ4kK-9MhGxcbeD-R5O6_quHKKN__NjmeBVnnK0co-Ejq2qmoxy0oiEmZXv03-yj4mqnnK24nKirmkDDn-ycsi2063cllqNA0iO9nAbugqqJU2-ooaQEoupv33dGrSyg2Kp2q2kJ_DBpNOVVtPfguot9rLomUufNP7LzUxlFngJ8lVP40TymYMwRE7Wq76-GXxG0geo2tnj6Gbo2YPue4AHXncPg028DFIGHrE4DqDJ_vE2P0t8G-pUbEJ-r0EWSz_enc4z2LaeAEZmnq5iSVbveZi_88v3Rp9bFx0VsR2BdKZmnq5iS29BhoDmu10i5..; __uid=AARfyLe8Bke3UGL2FjhvNQn6; __sdid=AATHIp7rA8mvfKhhMvPnt0milUEzXi1ReJN0CjChc4LeUA6qYUdYA32jmaL/Lk2AA4s=; __pus=bd604e2725229c945e994c227de77f1cAASVpc7pXsTooap3JBI0XiJI9JU/JUngO9SJCOIRNOLXngLdOfozAiiwF9CnY/xOiEgE8NvKDDg1ZAwX7nVqe9H2ib5aMTAi+a2DfaPE6/6Won1vUOAfKCNELRmJOeYhVn3/eQUYx6B9EIw9HCYjQoKVh76daPI2lnp3QBTK/5zWGya9rVul08y86xpY3APre7I=; __kp=eb241d80-1ee6-11f1-85bf-6167dfcf1acd; __kuus=NenaSYNIw/O9SzABV2HtnjTDoH5aJthk7nOgDdt9pHeaJmMkCD/TY+jVFIrCn+WeFaQVR9h+E/YoStTBZAtB9va0ghzlZCgNuddki8Z8WOnYug==; __puus=2baf96cce907422be5e242bb1d280977AATi54Q/fKnsA5nM/iG/TZHL12hYZj/ELuUFbEwO/2jIXaSGwmvXppDKCITu73rdsZ1hRR0cY2QRpWdM0o+nFv65fCf5ZwPIaGHvUK9BOg3653jTngpTAj41u8kq5vTIDnPDPGWlYPYiUehDbyYBwxKYl12BFSjonkfKybr3Fpc2TYQcm566OQTrPzsupcOkOoa8CQllYvsoVyEBF2ZpiX/5'
+            },
+            data: data
+        };
+        let html = await axios.request(config)
+        if (html.status === 200) {
+            return html.data.data.token
+        }
+    }
+
+    //伪造token实现无限不转存
+    async getUrl(shareId, stoken, fileId, fileToken) {
+        await this.initQuark()
+        let token = await this.getToken()
+        let data = JSON.stringify({
+            "fids": [fileId],
+            "fids_token": [fileToken],
+            "pwd_id": shareId,
+            "stoken": stoken,
+            "speedup_session": "",
+            "token": token
+        });
+        let config = {
+            method: 'POST',
+            url: 'https://drive-pc.quark.cn/1/clouddrive/file/download?pr=ucpro&fr=pc',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) quark-cloud-drive/3.20.0 Chrome/112.0.5615.165 Electron/24.1.3.8 Safari/537.36 Channel/pckk_other_ch',
+                'Connection': 'keep-alive',
+                'Accept': '*/*,application/json;charset=utf-8',
+                'Accept-Encoding': 'gzip, deflate, br, zstd',
+                'Content-Type': 'application/json',
+                'Cookie': 'b-user-id=7a421e0c-2ff4-1251-4069-cdfbfedcaf8d; _UP_A4A_11_=wb9cf15ce78d47ed921a9fab3faa85e8; xlly_s=1; __sdid=AAQCvlprpJtHMDSTmliW7CTXaxFJONVhZZyKc8NgJ6Y+XH4iO1v3Q8gYFeEi2hqeV4U=; _UP_D_=pc; __pus=97012d074b8d70d6eeaeb7dbe3fcb05dAAQB4QUahCaghYFA9y/NYud63QbrjWpcO/mp4OgGcA2UZ5O+VMUlfCpacaDzbRBV2O/DK9y9iAFBUL7iPmzdj2d9; __kp=ea759a90-1ed1-11f1-8f67-e7e56f2ee996; __kps=AARfyLe8Bke3UGL2FjhvNQn6; __ktd=axb8KS+96BcSmmEd+gddqg==; __uid=AARfyLe8Bke3UGL2FjhvNQn6; __puus=c6ca8123ab4024f139092c58678de061AATi54Q/fKnsA5nM/iG/TZHLzf8buD1i2D3OKKcgKFxmYvTq9ypLK3mbAQlXFlJz6zEGV7aROE4eXsRbMGviOH4EpwIMv8HZ3UUDPfRoIVsx+mV9xMqXujCxpQR96l9Alpe2B15pFBZl94/lBMSORn+M/cocX9mAe2wX82JvYhQYO46JRC1evvevyyyzaai9ItKcf72BRC6QzioBIic/XHI8; isg=BDg4TjMppS-k-Mk0_qdGtZTlCebKoZwrBz4YK3KgQXMmjdJ3GrWXu63lQY093VQD; tfstk=gTJiuT2wCC5_fZaEErWsOziN8jlKBO6X3EeAktQqTw7Ckctv0ty2knBOgVtv-Z7F2SJA0f_cTUs7_CCZSemDWnwA7NpAns8RR5Rx5qtFmULRuiSqcMkeuUYcGc_AuZYv0CnKeYK6ft62o4H-emTk0mLcbsyaLmScDPod_tj5i4Wqy4HL9k5sWt-TUIxGLH7CmiyNuEWULi7Ubl8V76zFqg6VuE8VTWSRcGPN7N-UTwsV3Z8V3DXFRiXVuEWqxHllpf763pJErkLuNeO_cCsGsa-N7nKvLPWT1nQ33-JHt1brQw243pjM09gPi8cAzQ_Owa8EpRXDYiYhwC0uIEx2VI5HnPo9zeRDuMOIoSbkghdWp6E4_HvcS_JNtoiJ4hs2usAIr8IGBBfkICib8h8RSQW6Du09x_AhNM5Um5W9w3pfadkgPwC5mefJs42MzglbT7y5t-sEDpPbG1SCxapyAdOShopf3Dm3am1NAG_-xDVbG1SCxannx7kf_Ms1y'
+            },
+            data: data
+        };
+        let html = await axios.request(config).catch(e => e)
+        if (html.status === 200) {
+            return html.data.data.map(it => {
+                return {
+                    name: it.video_max_resolution,
+                    url: it.download_url
+                }
+            })
+        }
+    }
+
 
     async testSupport(url, headers) {
 
-        const resp = await req
+        const resp = await reqs
 
             .get(url, {
 
@@ -1236,7 +1311,7 @@ class QuarkHandler {
 
                             console.log(inReq.id, chunkIdx);
 
-                            const dlResp = await req.get(url, {
+                            const dlResp = await reqs.get(url, {
 
                                 responseType: 'stream',
 

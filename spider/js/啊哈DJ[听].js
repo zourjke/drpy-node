@@ -26,6 +26,7 @@ var rule = {
     headers: {
         'User-Agent': 'MOBILE_UA',
     },
+    timeout: 10000,
     play_parse: true,
     lazy: async function () {
         let {input, pdfh} = this;
