@@ -455,9 +455,9 @@ export async function init(filePath, env = {}, refresh) {
         // delete sandbox.rule;
 
         // 清理沙箱中的临时构建变量
-        delete sandbox._asyncGetRule;
-        delete sandbox.module;
-        delete sandbox.exports;
+        // delete sandbox._asyncGetRule;
+        // delete sandbox.module;
+        // delete sandbox.exports;
 
         // 缓存模块和文件的 hash 值
         moduleCache.set(hashMd5, {moduleObject, hash: fileHash});
@@ -515,9 +515,9 @@ export async function getRuleObject(filePath, env, refresh) {
         // delete sandbox.rule;
 
         // 清理沙箱中的临时构建变量
-        delete sandbox._asyncGetRule;
-        delete sandbox.module;
-        delete sandbox.exports;
+        // delete sandbox._asyncGetRule;
+        // delete sandbox.module;
+        // delete sandbox.exports;
 
         // 缓存模块和文件的 hash 值
         ruleObjectCache.set(filePath, {ruleObject, hash: fileHash});
@@ -569,9 +569,9 @@ export async function initJx(filePath, env, refresh) {
         log(`[initJx] 加载解析:${filePath} 耗时 ${cost}毫秒`)
 
         // 清理沙箱中的临时构建变量
-        delete sandbox._asyncGetLazy;
-        delete sandbox.module;
-        delete sandbox.exports;
+        // delete sandbox._asyncGetLazy;
+        // delete sandbox.module;
+        // delete sandbox.exports;
 
         jxCache.set(hashMd5, {jxObj, hash: fileHash});
         return jxObj;
