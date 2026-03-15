@@ -65,6 +65,7 @@ let quick_data = {
     阿里: 'https://www.alipan.com/s/vgXMcowK8pQ',
     天翼: 'https://cloud.189.cn/web/share?code=INJbU3NbqyUj',
     百度: 'https://pan.baidu.com/s/1L0UIv4p0X0QrbbKErJuc_w?pwd=2pwj',
+    迅雷: 'https://pan.xunlei.com/s/VOkBwLBNoXN8eO9WrcVbXdTcA1?pwd=8tvj#',
     移动1: 'https://yun.139.com/shareweb/#/w/i/0i5CLQ7BpV7Ai',
     移动2: 'https://caiyun.139.com/m/i?2jexC1gcjeN7q',
     移动3: 'https://yun.139.com/shareweb/#/w/i/2i2MoE9ZHn9p1',
@@ -481,8 +482,7 @@ var rule = {
                 vod_name: '测试代理流',
                 vod_play_from: 'drpyS本地流代理',
                 // vod_play_url: '测试播放流$' + getProxyUrl().split('?')[0] + media_url + '#不代理直接播$' + media_url + '#8k播放$' + m3u8_url,
-                // vod_play_url: '测试播放流$' + getProxyUrl().split('?')[0] + media_url + '#不代理直接播$' + media_url
-                vod_play_url: '测试播放流$' + getProxyUrl() + '&url=' + media_url + '#不代理直接播$' + media_url
+                vod_play_url: '测试播放流$' + getProxyUrl().split('?')[0] + media_url + '#不代理直接播$' + media_url
             }
         }
     },
@@ -491,16 +491,15 @@ var rule = {
         let {input} = this;
         return {parse: 0, url: input}
     },
-    proxy_rule: async function (params) {
+    proxy_rule: async function () {
         let {input, proxyPath} = this;
-        const url = proxyPath || params.url;
+        const url = proxyPath;
         log('start proxy:', url);
         try {
             const headers = {
                 'user-agent': PC_UA,
             }
-            // return [200, null, url, headers, 2]
-            return [302, null, '', {location: url}]
+            return [200, null, url, headers, 2]
         } catch (e) {
             log('proxy error:', e.message);
             return [500, 'text/plain', e.message]

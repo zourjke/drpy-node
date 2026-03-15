@@ -71,6 +71,10 @@ globalThis.Baidu = Baidu;
 
 // 百度网盘接口2 - 百度网盘的另一个实现版本
 globalThis.Baidu2 = Baidu2;
+
+// 迅雷网盘
+globalThis.Xun = Xun;
+
 // webdav
 globalThis.createWebDAVClient = createWebDAVClient;
 // ftp

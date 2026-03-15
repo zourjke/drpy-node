@@ -63,7 +63,7 @@ globalThis.JsonBig = JSONbig({storeAsString: true});
 globalThis.require = rootRequire;
 initializeGlobalDollar();
 
-const {Ali, Baidu, Baidu2, Cloud, Pan, Quark, UC, Yun} = PanS;
+const {Ali, Baidu, Baidu2, Cloud, Pan, Quark, UC, Yun, Xun} = PanS;
 const {
     sleep, sleepSync, getNowTime, computeHash, deepCopy,
     urljoin, urljoin2, joinUrl, keysToLowerCase, naturalSort, $js,
@@ -178,7 +178,7 @@ const STATIC_LIBS_SANDBOX = {
     matchesAll, cut, gbkTool, CryptoJS, JSEncrypt, NODERSA, pako, JSON5, jinja, template, batchExecute,
     atob, btoa, base64Encode, base64Decode, md5, rc4Encrypt, rc4Decrypt, rc4, rc4_decode, randomUa,
     jsonpath, hlsParser, axios, axiosX, URL, pathLib, executeParse, qs, Buffer, URLSearchParams, COOKIE,
-    ENV, _ENV, Quark, Baidu, Baidu2, UC, Ali, Cloud, Yun, Pan, createWebDAVClient, createFTPClient,
+    ENV, _ENV, Quark, Baidu, Baidu2, UC, Ali, Cloud, Yun, Pan, Xun, createWebDAVClient, createFTPClient,
     require: rootRequire, WebSocket, WebSocketServer, zlib, JSONbig, JsonBig, minizlib,
     iconv: globalThis.iconv, cheerio: globalThis.cheerio,
 };

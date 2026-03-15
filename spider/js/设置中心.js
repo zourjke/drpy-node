@@ -65,6 +65,7 @@ let quick_data = {
     阿里: 'https://www.alipan.com/s/vgXMcowK8pQ',
     天翼: 'https://cloud.189.cn/web/share?code=INJbU3NbqyUj',
     百度: 'https://pan.baidu.com/s/1L0UIv4p0X0QrbbKErJuc_w?pwd=2pwj',
+    迅雷: 'https://pan.xunlei.com/s/VOkBwLBNoXN8eO9WrcVbXdTcA1?pwd=8tvj#',
     移动1: 'https://yun.139.com/shareweb/#/w/i/0i5CLQ7BpV7Ai',
     移动2: 'https://caiyun.139.com/m/i?2jexC1gcjeN7q',
     移动3: 'https://yun.139.com/shareweb/#/w/i/2i2MoE9ZHn9p1',

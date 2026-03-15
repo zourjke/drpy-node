@@ -27,6 +27,7 @@ import {Pan} from "./pan/pan123.js";     // 123网盘服务
 import {Quark} from "./pan/quark.js";    // 夸克网盘服务
 import {UC} from "./pan/uc.js";          // UC网盘服务
 import {Yun} from "./pan/yun.js";        // 115网盘服务
+import {Xun} from "./pan/xun.js";        // 迅雷网盘服务
 
 // 统一导出所有网盘服务
-export default {Ali, Baidu, Baidu2, Cloud, Pan, Quark, UC, Yun}
+export default {Ali, Baidu, Baidu2, Cloud, Pan, Quark, UC, Yun, Xun}

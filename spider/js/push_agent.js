@@ -78,7 +78,7 @@ var rule = {
             let list = input.split('@');
             // log(list);
             for (let i = 0; i < list.length; i++) {
-                if (/pan.quark.cn|drive.uc.cn|www.alipan.com|www.aliyundrive.com|cloud.189.cn|yun.139.com|caiyun.139.com|www.123684.com|www.123865.com|www.123912.com|www.123pan.com|www.123pan.cn|www.123592.com|pan.baidu.com/.test(list[i])) {
+                if (/pan.quark.cn|drive.uc.cn|www.alipan.com|www.aliyundrive.com|cloud.189.cn|yun.139.com|caiyun.139.com|www.123684.com|www.123865.com|www.123912.com|www.123pan.com|www.123pan.cn|www.123592.com|pan.baidu.com|pan.xunlei.com/.test(list[i])) {
                     if (/pan.quark.cn/.test(list[i])) {
                         playPans.push(list[i]);
                         const shareData = Quark.getShareData(list[i]);
@@ -189,12 +189,21 @@ var rule = {
                         })
                         vod.vod_content = vod_content_add.join('\n');
                     }
+                    if (/pan.xunlei.com/.test(input)) {
+                        const data = await Xun.getShareData(input)
+                        Object.keys(data).forEach(it => {
+                            playform.push('Xun-' + it)
+                            const urls = data[it].map(item => item.name + "$" + [item.fileId, item.share_id, item.parent_id, item.pass_code_token].join('*')).join('#');
+                            playurls.push(urls);
+                        })
+                    }
+
                 } else {
                     playform.push('推送');
                     playurls.push("推送" + '$' + list[i])
                 }
             }
-        } else if (/pan.quark.cn|drive.uc.cn|www.alipan.com|www.aliyundrive.com|cloud.189.cn|yun.139.com|caiyun.139.com|www.123684.com|www.123865.com|www.123912.com|www.123pan.com|www.123pan.cn|www.123592.com|pan.baidu.com/.test(input)) {
+        } else if (/pan.quark.cn|drive.uc.cn|www.alipan.com|www.aliyundrive.com|cloud.189.cn|yun.139.com|caiyun.139.com|www.123684.com|www.123865.com|www.123912.com|www.123pan.com|www.123pan.cn|www.123592.com|pan.baidu.com|pan.xunlei.com/.test(input)) {
             if (/pan.quark.cn/.test(input)) {
                 playPans.push(input);
                 const shareData = Quark.getShareData(input);
@@ -305,6 +314,15 @@ var rule = {
                 })
                 vod.vod_content = vod_content_add.join('\n');
             }
+            if (/pan.xunlei.com/.test(input)) {
+                const data = await Xun.getShareData(input)
+                Object.keys(data).forEach(it => {
+                    playform.push('Xun-' + it)
+                    const urls = data[it].map(item => item.name + "$" + [item.fileId, item.share_id, item.parent_id, item.pass_code_token].join('*')).join('#');
+                    playurls.push(urls);
+                })
+            }
+
         } else {
             playform.push('推送');
             playurls.push("推送" + '$' + input)
@@ -333,7 +351,7 @@ var rule = {
                 // 确保返回parse: 0和正确的URL格式，避免前端创建新的播放列表
                 return {parse: 0, url: ["原画", input]}
             }
-        } else if (/Quark-|UC-|Ali-|Cloud-|Yun-|Pan123-|Baidu-/.test(flag)) {
+        } else if (/Quark-|UC-|Ali-|Cloud-|Yun-|Pan123-|Baidu-|Xun-/.test(flag)) {
             const ids = id.split('*');
             let UCDownloadingCache = {};
             let downUrl = ''
@@ -463,6 +481,24 @@ var rule = {
                     }
                 }
             }
+            if (flag.startsWith('Xun-')) {
+                log('迅雷云盘开始解析')
+                //转码和下载的第二个值不同
+                let urls = await Xun.getShareUrl(ids[0], ids[1], ids[3])
+                // let url = await Xun.getDownloadUrl(ids[0],ids[2],ids[3])
+                // if(url!==''){
+                //     urls.push('原画',url+ "#isVideo=true##fastPlayMode##threads=20#")
+                //     urls.push("猫画", `http://127.0.0.1:5575/proxy?thread=${ENV.get('thread') || 6}&chunkSize=256&url=` + encodeURIComponent(url));
+                // }
+                return {
+                    parse: 0,
+                    url: urls,
+                    header: {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36"
+                    }
+                }
+            }
+
         } else {
             return input
         }
