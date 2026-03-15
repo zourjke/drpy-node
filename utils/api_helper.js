@@ -39,10 +39,14 @@ export function startJsonWatcher(ENGINES, jsonDir) {
                     // 清理已完成的计时器
                     debounceTimers.delete(filename);
                 }, 100); // 100ms防抖延迟
+                if (timer.unref) timer.unref();
 
                 debounceTimers.set(filename, timer);
             }
         });
+
+        // 允许监听器不阻止进程退出
+        if (jsonWatcher.unref) jsonWatcher.unref();
 
         // console.log(`start json file hot reload success，listening path: ${jsonDir}`);
     } catch (error) {

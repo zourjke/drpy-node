@@ -7,6 +7,13 @@ import * as drpyS from '../libs/drpyS.js';
 import php from '../libs/php.js';
 import catvod from '../libs/catvod.js';
 
+// 初始化API引擎集合
+const ENGINES = {
+    drpyS,
+    php,
+    catvod,
+};
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Determine if we are running from the dist/libs directory (bundled) or source
@@ -42,15 +49,9 @@ const options = {
     catDir,
     catLibDir,
 };
-/**
- * 支持的引擎映射表
- * 包含drpyS、php、catvod
- */
-const ENGINES = {
-    drpyS,
-    php,
-    catvod,
-};
+
+// 启动JSON文件监听器 (仅在开发环境下生效)
+startJsonWatcher(ENGINES, jsonDir);
 //const query = {
 //    do: 'ds',
 //    pg: 1,
@@ -83,9 +84,10 @@ function withTimeout(promise, timeoutMs = null, operation = 'API操作', invokeM
     return Promise.race([
         promise,
         new Promise((_, reject) => {
-            setTimeout(() => {
+            const timer = setTimeout(() => {
                 reject(new Error(`${operation}超时 (${actualTimeout}ms)`));
             }, actualTimeout);
+            if (timer.unref) timer.unref();
         })
     ]);
 }

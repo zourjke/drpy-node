@@ -1,5 +1,5 @@
 import {execSync} from 'child_process';
-import {existsSync, statSync} from 'fs';
+import {existsSync, statSync, readdirSync, copyFileSync, mkdirSync} from 'fs';
 import {join, basename, dirname, resolve} from 'path';
 import url from 'url';
 
@@ -14,6 +14,41 @@ const INCLUDE_ITEMS = [
 
 // 获取脚本所在目录 (e:\gitwork\drpy-node)
 const getScriptDir = () => dirname(resolve(url.fileURLToPath(import.meta.url)));
+
+// 复制 _lib 开头的文件到 bundle 目录
+const copyLibFiles = (scriptDir) => {
+    const sourceDir = join(scriptDir, 'spider', 'js');
+    const targetDir = join(scriptDir, 'drpy-node-bundle', 'spider', 'js');
+
+    if (!existsSync(sourceDir)) {
+        console.warn(`警告: 源目录 ${sourceDir} 不存在，跳过复制 lib 文件。`);
+        return;
+    }
+
+    if (!existsSync(targetDir)) {
+        console.log(`创建目标目录: ${targetDir}`);
+        mkdirSync(targetDir, {recursive: true});
+    }
+
+    console.log(`正在从 ${sourceDir} 复制 lib 文件到 ${targetDir}...`);
+
+    try {
+        const files = readdirSync(sourceDir);
+        let count = 0;
+        for (const file of files) {
+            if (file.startsWith('_lib') && (file.endsWith('.js') || file.endsWith('.cjs'))) {
+                const srcPath = join(sourceDir, file);
+                const destPath = join(targetDir, file);
+                copyFileSync(srcPath, destPath);
+                // console.log(`已复制: ${file}`);
+                count++;
+            }
+        }
+        console.log(`成功复制了 ${count} 个 lib 文件。`);
+    } catch (error) {
+        console.error(`复制 lib 文件失败: ${error.message}`);
+    }
+};
 
 // 压缩 drpy-node-bundle 目录
 const compressBundle = (scriptDir) => {
@@ -79,6 +114,7 @@ const compressBundle = (scriptDir) => {
 // 主程序入口
 const main = () => {
     const scriptDir = getScriptDir();
+    copyLibFiles(scriptDir);
     compressBundle(scriptDir);
 };
 

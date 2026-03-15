@@ -74,6 +74,9 @@ const CACHE_OPTIONS = {
     max: 100,
     ttl: 1000 * 60 * 10, // 10分钟
 };
+// const moduleCache = new Map();
+// const ruleObjectCache = new Map();
+// const jxCache = new Map();
 const moduleCache = new LRUCache(CACHE_OPTIONS);
 const ruleObjectCache = new LRUCache(CACHE_OPTIONS);
 const jxCache = new LRUCache(CACHE_OPTIONS);

@@ -220,6 +220,11 @@ export class SmartCacheManager {
             this._performCleanup();
         }, this.cleanupInterval);
         
+        // 允许进程在定时器存在时退出
+        if (this.cleanupTimer.unref) {
+            this.cleanupTimer.unref();
+        }
+        
         // 确保进程退出时清理定时器
         if (typeof process !== 'undefined') {
             process.on('exit', () => this.stopCleanupTimer());

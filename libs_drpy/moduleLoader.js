@@ -1,6 +1,6 @@
 import {readFileSync, existsSync} from 'fs';
 import path from "path";
-import {createRequire} from 'module';
+import Module, {createRequire} from 'module';
 import {fileURLToPath} from "url";
 import axios from 'axios';
 import fetchSync from 'sync-fetch';
@@ -10,6 +10,21 @@ const ROOT_DIR = path.resolve(__dirname, '../');
 const LIB_ROOT = path.join(ROOT_DIR, 'spider/js');
 
 const customRequire = createRequire(import.meta.url);
+
+/**
+ * Patch Module.prototype.require to handle bundled modules in CJS context
+ * This allows native CJS modules (like those loaded via require('./lib.js')) to find
+ * bundled dependencies (axios, iconv-lite, etc.) which are exposed on globalThis.
+ */
+const originalRequire = Module.prototype.require;
+Module.prototype.require = function(id) {
+    if (id === 'iconv-lite' && globalThis.iconv) return globalThis.iconv;
+    if (id === 'axios' && globalThis.axios) return globalThis.axios;
+    if (id === 'cheerio' && globalThis.cheerio) return globalThis.cheerio;
+    if (id === 'qs' && globalThis.qs) return globalThis.qs;
+    if (id === 'crypto-js' && globalThis.CryptoJS) return globalThis.CryptoJS;
+    return originalRequire.apply(this, arguments);
+};
 
 // 导出 rootRequire
 export const rootRequire = (modulePath) => {
