@@ -90,7 +90,7 @@ var rule = {
     lazy: async function (flag, id, flags) {
         let {requestHost} = this;
         const parseObj = executeParse('_30wmv', requestHost, id);
-        console.log('parseObj:', parseObj);
+        // console.log('parseObj:', parseObj);
         if (parseObj[0]) {
             const _data = await req(parseObj[1]);
             const data = JSON.parse(_data.content);

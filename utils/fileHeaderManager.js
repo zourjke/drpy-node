@@ -25,6 +25,68 @@ class FileHeaderManager {
     };
 
     /**
+     * Find the @header(...) block in the comment text
+     * @param {string} text Comment text
+     * @param {string} ext File extension (.js or .py)
+     * @returns {Object|null} { start, end, content }
+     */
+    static findHeaderBlock(text, ext) {
+        const startMarker = '@header(';
+        const startIndex = text.indexOf(startMarker);
+        if (startIndex === -1) return null;
+
+        let index = startIndex + startMarker.length;
+        let balance = 1;
+        let inString = false;
+        let stringChar = '';
+        let escape = false;
+        let inLineComment = false;
+
+        for (; index < text.length; index++) {
+            const char = text[index];
+
+            if (inLineComment) {
+                if (char === '\n') inLineComment = false;
+                continue;
+            }
+
+            if (inString) {
+                if (escape) {
+                    escape = false;
+                } else if (char === '\\') {
+                    escape = true;
+                } else if (char === stringChar) {
+                    inString = false;
+                }
+                continue;
+            }
+
+            // Start of comment
+            if (char === '/' && text[index + 1] === '/') {
+                inLineComment = true;
+                index++; 
+            } else if (ext === '.py' && char === '#') {
+                inLineComment = true;
+            } else if (char === '"' || char === "'") {
+                inString = true;
+                stringChar = char;
+            } else if (char === '(') {
+                balance++;
+            } else if (char === ')') {
+                balance--;
+                if (balance === 0) {
+                    return {
+                        start: startIndex,
+                        end: index + 1,
+                        content: text.substring(startIndex + startMarker.length, index)
+                    };
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
      * 解析JavaScript对象字面量（支持无引号属性名）
      * @param {string} str 对象字符串
      * @returns {Object} 解析后的对象
@@ -60,11 +122,11 @@ class FileHeaderManager {
         const match = content.match(config.regex);
         if (!match) return null;
 
-        const headerMatch = match[0].match(config.headerRegex);
-        if (!headerMatch) return null;
+        const headerBlock = this.findHeaderBlock(match[0], ext);
+        if (!headerBlock) return null;
 
         try {
-            return this.parseObjectLiteral(headerMatch[1].trim());
+            return this.parseObjectLiteral(headerBlock.content.trim());
         } catch {
             return null;
         }
@@ -153,9 +215,13 @@ class FileHeaderManager {
                 newContent = newComment + content;
             } else {
                 // 这是文件头注释，进行更新
-                if (config.headerRegex.test(fullComment)) {
+                const headerBlock = this.findHeaderBlock(fullComment, ext);
+                
+                if (headerBlock) {
                     // 已存在@header，替换它
-                    const updatedComment = fullComment.replace(config.headerRegex, headerStr);
+                    const updatedComment = fullComment.substring(0, headerBlock.start) +
+                        headerStr +
+                        fullComment.substring(headerBlock.end);
                     newContent = content.substring(0, commentStartIndex) +
                         updatedComment +
                         content.substring(commentEndIndex);
@@ -290,12 +356,18 @@ class FileHeaderManager {
         const match = content.match(config.regex);
         if (!match) return content.trim();
 
-        let [fullComment, innerContent] = match;
+        let [fullComment] = match;
 
-        if (config.headerRegex.test(innerContent)) {
-            innerContent = innerContent.replace(config.headerRegex, '');
-
-            const cleanedInner = innerContent
+        const headerBlock = this.findHeaderBlock(fullComment, ext);
+        
+        if (headerBlock) {
+            const innerContent = fullComment.substring(0, headerBlock.start) + 
+                               fullComment.substring(headerBlock.end);
+            
+            // Clean up inner content
+            let cleanedInner = innerContent
+                .replace(config.start, '')
+                .replace(config.end, '')
                 .split('\n')
                 .filter(line => line.trim().length > 0)
                 .join('\n');
@@ -303,7 +375,7 @@ class FileHeaderManager {
             if (!cleanedInner.trim()) {
                 content = content.replace(fullComment, '');
             } else {
-                const newComment = `${config.start}${cleanedInner}${config.end}`;
+                const newComment = `${config.start}\n${cleanedInner}\n${config.end}`;
                 content = content.replace(fullComment, newComment);
             }
         }

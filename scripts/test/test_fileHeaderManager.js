@@ -87,6 +87,61 @@ function test() {
         await FileHeaderManager.writeHeader(jsWithCommentFile, headerObj);
         console.log('\n添加文件头后:');
         console.log(await fs.readFile(jsWithCommentFile, 'utf8'));
+
+        // 测试3.5: 复杂嵌套头信息
+        console.log('\n\n测试3.5: 复杂嵌套头信息');
+        const complexFile = path.join(testDir, 'complex.js');
+        const complexContent = `/*
+@header({
+  searchable: 1,
+  filterable: 1,
+  quickSearch: 0,
+  title: '央视大全',
+  lang: 'ds',
+  isProxyPath: true,
+  more: {
+      parseApi: [
+        {
+            host: 'cctv://(.+)',
+            flag: 'CCTV'
+        },
+        {
+            host: 'cctv4k://(.+)',
+            flag: 'CCTV4K'
+        },
+        {
+            host: 'cctvlive://(.+)',
+            flag: 'CCTV直播'
+        },
+      ]
+  },
+
+})
+*/
+var rule = {};`;
+        await createTestFile(complexFile, complexContent);
+        
+        // 读取并验证
+        const complexHeader = await FileHeaderManager.readHeader(complexFile);
+        console.log('读取复杂头信息:', complexHeader.title);
+        if (complexHeader.more && complexHeader.more.parseApi && complexHeader.more.parseApi.length === 3) {
+            console.log('✓ 复杂结构解析正确');
+        } else {
+            console.error('✗ 复杂结构解析失败');
+        }
+        
+        // 写入并验证不损坏
+        await FileHeaderManager.writeHeader(complexFile, complexHeader);
+        const newComplexContent = await fs.readFile(complexFile, 'utf8');
+        // Check for cleanliness (no trailing garbage like in the bug)
+        // The bug caused "})'," or similar garbage at the end of the comment block
+        // The correct content should end the comment cleanly.
+        if (newComplexContent.includes("host: 'cctv://(.+)'") && !newComplexContent.includes("})',")) {
+            console.log('✓ 写入复杂头信息正确 (无乱码残留)');
+        } else {
+            console.error('✗ 写入复杂头信息失败 (可能有残留)');
+            console.log(newComplexContent);
+        }
         
         // 测试4: 测试内容完整性检查
         console.log('\n\n测试4: 内容完整性检查');

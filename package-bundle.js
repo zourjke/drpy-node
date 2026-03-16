@@ -12,16 +12,24 @@ const INCLUDE_ITEMS = [
     'localDsCoreTest.js'
 ];
 
+// 需要额外复制的特定文件列表 (文件名，相对于 spider/js)
+const EXTRA_FILES = [
+    '30wMV[听].js',
+    '爱推图[画].js',
+    '央视大全[官].js',
+    '设置中心.js'
+];
+
 // 获取脚本所在目录 (e:\gitwork\drpy-node)
 const getScriptDir = () => dirname(resolve(url.fileURLToPath(import.meta.url)));
 
-// 复制 _lib 开头的文件到 bundle 目录
-const copyLibFiles = (scriptDir) => {
+// 复制 _lib 开头的文件及额外指定的文件到 bundle 目录
+const copyFiles = (scriptDir) => {
     const sourceDir = join(scriptDir, 'spider', 'js');
     const targetDir = join(scriptDir, 'drpy-node-bundle', 'spider', 'js');
 
     if (!existsSync(sourceDir)) {
-        console.warn(`警告: 源目录 ${sourceDir} 不存在，跳过复制 lib 文件。`);
+        console.warn(`警告: 源目录 ${sourceDir} 不存在，跳过复制文件。`);
         return;
     }
 
@@ -30,23 +38,37 @@ const copyLibFiles = (scriptDir) => {
         mkdirSync(targetDir, {recursive: true});
     }
 
-    console.log(`正在从 ${sourceDir} 复制 lib 文件到 ${targetDir}...`);
+    console.log(`正在从 ${sourceDir} 复制文件到 ${targetDir}...`);
 
     try {
         const files = readdirSync(sourceDir);
-        let count = 0;
+        let libCount = 0;
+        let extraCount = 0;
+        
         for (const file of files) {
+            let shouldCopy = false;
+            
+            // 检查是否是 _lib 文件
             if (file.startsWith('_lib') && (file.endsWith('.js') || file.endsWith('.cjs'))) {
+                shouldCopy = true;
+                libCount++;
+            } 
+            // 检查是否在额外文件列表中
+            else if (EXTRA_FILES.includes(file)) {
+                shouldCopy = true;
+                extraCount++;
+            }
+
+            if (shouldCopy) {
                 const srcPath = join(sourceDir, file);
                 const destPath = join(targetDir, file);
                 copyFileSync(srcPath, destPath);
                 // console.log(`已复制: ${file}`);
-                count++;
             }
         }
-        console.log(`成功复制了 ${count} 个 lib 文件。`);
+        console.log(`成功复制了 ${libCount} 个 lib 文件和 ${extraCount} 个额外文件。`);
     } catch (error) {
-        console.error(`复制 lib 文件失败: ${error.message}`);
+        console.error(`复制文件失败: ${error.message}`);
     }
 };
 
@@ -114,7 +136,7 @@ const compressBundle = (scriptDir) => {
 // 主程序入口
 const main = () => {
     const scriptDir = getScriptDir();
-    copyLibFiles(scriptDir);
+    copyFiles(scriptDir);
     compressBundle(scriptDir);
 };
 

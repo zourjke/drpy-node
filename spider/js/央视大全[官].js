@@ -4,7 +4,25 @@
   filterable: 1,
   quickSearch: 0,
   title: '央视大全',
-  lang: 'ds'
+  lang: 'ds',
+  isProxyPath: true,
+  more: {
+      parseApi: [
+        {
+            host: 'cctv://(.+)',
+            flag: 'CCTV'
+        },
+        {
+            host: 'cctv4k://(.+)',
+            flag: 'CCTV4K'
+        },
+        {
+            host: 'cctvlive://(.+)',
+            flag: 'CCTV直播'
+        },
+      ]
+  },
+
 })
 */
 
@@ -34,7 +52,7 @@ var rule = {
     play_parse: true,
     lazy: async function () {
         let {input, flag, getProxyUrl} = this;
-        // log(input);
+        log(input);
         // log(flag);
         let guid = '';
         let url = '';

@@ -26,15 +26,6 @@ var rule = {
     searchable: 2,
     quickSearch: 0,
     filterable: 0,
-    预处理: async function () {
-        // console.log(encodeStr('你好'));
-        // console.log(typeof JSEncrypt);
-        // console.log(typeof JSON5);
-        // console.log(typeof gbkTool);
-        // console.log(typeof NODERSA);
-        // console.log(typeof atob);
-        // console.log(typeof btoa);
-    },
     headers: {
         'User-Agent': 'MOBILE_UA',
     },
@@ -64,10 +55,6 @@ var rule = {
     推荐: '*',
     searchUrl: '/sou-**-fypage.html',
     一级: '#content&&article;h2&&Text;img&&data-src;;a&&href',
-    // 一级: async function () {
-    //     let {getProxyUrl} = this;
-    //     console.log('本地代理地址:' + getProxyUrl());
-    // },
     二级: '*',
     搜索: '*',
 }
