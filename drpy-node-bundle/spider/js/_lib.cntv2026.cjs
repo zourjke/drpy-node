@@ -1,5 +1,4 @@
 const axios = require('axios');
-// const iconv = require('iconv-lite');
 // ==================== 常量定义 ====================
 const TS_PACKET_SIZE = 188;
 const VIDEO_PID = 256;
@@ -93,10 +92,15 @@ function findNALUnits(buffer) {
 
 // ==================== H.264解密核心 ====================
 // 解密H.264数据，保持原始数据结构不变，直接在原buffer上修改
+// 优化内存使用：避免创建不必要的buffer副本和对象
 async function decryptH264InPlace(h264Data) {
     let curDate = Date.now().toString();
     const MemoryExtend = 2048;
     let vmpTag = '';
+
+    // 预分配临时解密buffer（复用）
+    const maxDecryptBufSize = 1024 * 1024; // 1MB上限，足够处理单个NAL
+    const tempDecryptBuf = Buffer.allocUnsafe(maxDecryptBufSize);
 
     function _common(o) {
         const memory = CNTVH5PlayerModule._jsmalloc(curDate.length + MemoryExtend);
@@ -132,9 +136,10 @@ async function decryptH264InPlace(h264Data) {
         return _common("UpdatePlayer");
     }
 
-    function decrypt(buf) {
+    // 解密到预分配的buffer，返回实际解密长度
+    function decryptToBuf(srcBuf, destBuf) {
         const pageHost = "https://tv.cctv.com";
-        const addr = CNTVH5PlayerModule._jsmalloc(buf.length + MemoryExtend);
+        const addr = CNTVH5PlayerModule._jsmalloc(srcBuf.length + MemoryExtend);
         const StaticCallModuleVod = {
             H264NalSet: function (e, t, i, n, r) {
                 return e._CNTV_jsdecVOD7(t, i, n, r);
@@ -172,25 +177,28 @@ async function decryptH264InPlace(h264Data) {
             return StaticCallModuleVod[a](e, t, i, n, r);
         }
 
-        CNTVH5PlayerModule.HEAP8.set(buf, addr);
-        CNTVH5PlayerModule.HEAP8.set(Array.from(pageHost, e => e.charCodeAt(0)), addr + buf.length);
+        CNTVH5PlayerModule.HEAP8.set(srcBuf, addr);
+        CNTVH5PlayerModule.HEAP8.set(Array.from(pageHost, e => e.charCodeAt(0)), addr + srcBuf.length);
         const addr2 = CNTVH5PlayerModule._jsmalloc(curDate.length);
         CNTVH5PlayerModule.HEAP8.set(Array.from(curDate, e => e.charCodeAt(0)), addr2);
 
         for (const i in vmpTag)
             if ("0123456".includes(vmpTag[i]))
-                StaticCallModuleVodAPI(CNTVH5PlayerModule, addr2, addr, buf.length, pageHost.length, Object.keys(StaticCallModuleVod)[i]);
+                StaticCallModuleVodAPI(CNTVH5PlayerModule, addr2, addr, srcBuf.length, pageHost.length, Object.keys(StaticCallModuleVod)[i]);
 
-        const decRet = StaticCallModuleVodAPI(CNTVH5PlayerModule, addr2, addr, buf.length, pageHost.length, Object.keys(StaticCallModuleVod)[8]);
-        const retBuffer = Buffer.from(CNTVH5PlayerModule.HEAP8.subarray(addr, addr + decRet));
+        const decRet = StaticCallModuleVodAPI(CNTVH5PlayerModule, addr2, addr, srcBuf.length, pageHost.length, Object.keys(StaticCallModuleVod)[8]);
+
+        // 复制到预分配的buffer (HEAP8是Uint8Array，使用set方法)
+        const copyLen = Math.min(decRet, destBuf.length);
+        destBuf.set(CNTVH5PlayerModule.HEAP8.subarray(addr, addr + copyLen));
 
         CNTVH5PlayerModule._jsfree(addr);
         CNTVH5PlayerModule._jsfree(addr2);
-        return retBuffer;
+        return decRet;
     }
 
-    // 找到所有NAL单元及其在原始buffer中的位置
-    const nalUnits = [];
+    // 找到所有NAL单元的位置信息（只存储必要的位置信息，不存储数据引用）
+    const nalUnits = [];  // { dataPos, dataEnd, header, nalUnitType }
     let i = 0;
     while (i < h264Data.length - 3) {
         if (h264Data[i] === 0x00 && h264Data[i + 1] === 0x00) {
@@ -223,14 +231,12 @@ async function decryptH264InPlace(h264Data) {
                 const dataEnd = nextStart;
                 const nalUnitType = header & 0x1F;
 
+                // 只存储位置信息，不存储subarray引用
                 nalUnits.push({
-                    startCodePos: i,
-                    startCodeLen: startCodeLen,
-                    headerPos: nalStart,
                     dataPos: dataStart,
                     dataEnd: dataEnd,
                     header: header,
-                    data: h264Data.subarray(dataStart, dataEnd),
+                    dataLen: dataEnd - dataStart,
                     nalUnitType: nalUnitType
                 });
 
@@ -241,45 +247,51 @@ async function decryptH264InPlace(h264Data) {
         i++;
     }
 
-    // 解密并替换原始buffer中的数据
+    // 解密并替换原始buffer中的数据（原地修改）
     let shouldDecrypt = false;
     curDate = Date.now().toString();
     InitPlayer();
 
-    // 创建可写的buffer副本
-    const resultBuffer = Buffer.from(h264Data);
-
     for (const nal of nalUnits) {
         UpdatePlayer();
 
-        const bufToDecrypt = Buffer.concat([Buffer.from([nal.header]), nal.data]);
+        // 将数据复制到预分配的buffer进行解密
+        const nalLen = nal.dataLen + 1; // +1 for header
+        if (nalLen > maxDecryptBufSize) continue; // 跳过过大的NAL
+
+        // 复制header + data到临时buffer
+        tempDecryptBuf[0] = nal.header;
+        h264Data.copy(tempDecryptBuf, 1, nal.dataPos, nal.dataEnd);
+
         if (nal.nalUnitType === 25) {
-            shouldDecrypt = nal.data[0] === 1;
+            shouldDecrypt = h264Data[nal.dataPos] === 1;
             if (shouldDecrypt) {
-                decrypt(bufToDecrypt);
+                decryptToBuf(tempDecryptBuf.subarray(0, nalLen), tempDecryptBuf);
             }
         } else if ((nal.nalUnitType === 1 || nal.nalUnitType === 5) && shouldDecrypt) {
-            const decrypted = decrypt(bufToDecrypt);
-            // 直接替换原始数据，保持起始码不变
-            const decryptedData = decrypted.subarray(1); // 跳过header，因为decrypted包含了header
+            const decLen = decryptToBuf(tempDecryptBuf.subarray(0, nalLen), tempDecryptBuf);
+            // 解密结果从索引1开始（跳过header）
+            const decryptedDataLen = decLen - 1;
             const writePos = nal.dataPos;
 
-            // 如果解密后数据小于等于原始空间，直接替换
-            if (decryptedData.length <= nal.dataEnd - nal.dataPos) {
-                decryptedData.copy(resultBuffer, writePos);
-                // 如果解密后数据更小，填充0
-                if (decryptedData.length < nal.dataEnd - nal.dataPos) {
-                    resultBuffer.fill(0, writePos + decryptedData.length, nal.dataEnd);
+            // 原地替换
+            if (decryptedDataLen <= nal.dataLen) {
+                // 解密数据更小或相等
+                if (decryptedDataLen > 0) {
+                    tempDecryptBuf.copy(h264Data, writePos, 1, 1 + decryptedDataLen);
+                }
+                if (decryptedDataLen < nal.dataLen) {
+                    h264Data.fill(0, writePos + decryptedDataLen, nal.dataEnd);
                 }
             } else {
-                // 解密后数据更大，截断到原始大小
-                decryptedData.copy(resultBuffer, writePos, 0, nal.dataEnd - nal.dataPos);
+                // 解密数据更大，截断
+                tempDecryptBuf.copy(h264Data, writePos, 1, 1 + nal.dataLen);
             }
         }
     }
     UnInitPlayer();
 
-    return resultBuffer;
+    return h264Data;
 }
 
 // ==================== TS解密处理函数 ====================
@@ -289,10 +301,10 @@ async function Parse_TS(buffer) {
 
     const originalTS = Buffer.from(buffer);
 
-    // 提取所有视频PID的payload，按PES包分组
-    const videoPESPackets = [];
-    let currentPESPayload = [];
-    let currentPESHeader = null;
+    // 第一遍扫描：计算视频数据总量并收集PES包信息
+    const videoPESRanges = [];  // 只存储位置和长度信息，不存储数据引用
+    let totalH264Size = 0;
+    let currentPESDataSize = 0;
     let inPES = false;
 
     for (let i = 0; i < originalTS.length; i += TS_PACKET_SIZE) {
@@ -314,129 +326,149 @@ async function Parse_TS(buffer) {
         }
 
         if (payload && offset < 188) {
-            const data = packet.subarray(offset);
+            const dataSize = 188 - offset;
 
             if (payloadStart) {
-                // 保存上一个PES包
-                if (inPES && currentPESPayload.length > 0 && currentPESHeader) {
-                    const h264Data = Buffer.concat(currentPESPayload);
-                    videoPESPackets.push({
-                        header: currentPESHeader,
-                        data: h264Data
-                    });
+                // 保存上一个PES包的范围信息
+                if (inPES && currentPESDataSize > 0) {
+                    videoPESRanges.push({ size: currentPESDataSize });
+                    totalH264Size += currentPESDataSize;
                 }
 
-                // 开始新的PES包 - 保存完整PES头
-                // 找到PES头结束位置：检查PES_header_data_length
-                // PES结构: [00 00 01] [stream_id] [len] [flags] [flags] [header_len] ...
-                let pesHeaderEnd = 9;  // 最小PES头长度
+                // 开始新的PES包 - 只计算数据大小
+                let pesHeaderEnd = 9;
+                const data = packet.subarray(offset);
                 if (data.length >= 9) {
-                    // 第8字节是PES_header_data_length (从0开始计数)
                     pesHeaderEnd = 9 + data[8];
                 }
                 pesHeaderEnd = Math.min(pesHeaderEnd, data.length);
 
-                currentPESHeader = data.subarray(0, pesHeaderEnd);
-                currentPESPayload = [data.subarray(pesHeaderEnd)];
+                const pesPayloadSize = dataSize - pesHeaderEnd;
+                currentPESDataSize = pesPayloadSize;
                 inPES = true;
             } else if (inPES) {
-                currentPESPayload.push(data);
+                currentPESDataSize += dataSize;
             }
         }
     }
 
     // 保存最后一个PES包
-    if (inPES && currentPESPayload.length > 0 && currentPESHeader) {
-        const h264Data = Buffer.concat(currentPESPayload);
-        videoPESPackets.push({
-            header: currentPESHeader,
-            data: h264Data
-        });
+    if (inPES && currentPESDataSize > 0) {
+        videoPESRanges.push({ size: currentPESDataSize });
+        totalH264Size += currentPESDataSize;
     }
 
-    // 合并所有H.264数据进行解密
-    let totalH264 = Buffer.alloc(0);
-    for (const pes of videoPESPackets) {
-        totalH264 = Buffer.concat([totalH264, pes.data]);
+    // 如果没有视频数据，直接返回原始TS
+    if (totalH264Size === 0) {
+        return originalTS;
     }
 
-    // 解密所有H.264数据
-    const decryptedH264 = await decryptH264InPlace(totalH264);
-
-    // 将解密后的数据按原始PES包大小分配回去
-    let h264Offset = 0;
-    const resultTS = Buffer.alloc(originalTS.length);
+    // 第二遍扫描：一次性提取所有H.264数据到预分配的buffer
+    const h264Data = Buffer.allocUnsafe(totalH264Size);
+    let h264WritePos = 0;
+    inPES = false;
 
     for (let i = 0; i < originalTS.length; i += TS_PACKET_SIZE) {
         if (i + TS_PACKET_SIZE > originalTS.length) break;
-        const origPacket = originalTS.subarray(i, i + TS_PACKET_SIZE);
+        const packet = originalTS.subarray(i, i + TS_PACKET_SIZE);
+        if (packet[0] !== 0x47) continue;
 
-        // 复制非视频包
-        if (origPacket[0] !== 0x47) {
-            origPacket.copy(resultTS, i);
-            continue;
-        }
+        const pid = ((packet[1] & 0x1F) << 8) | packet[2];
+        if (pid !== VIDEO_PID) continue;
 
-        const pid = ((origPacket[1] & 0x1F) << 8) | origPacket[2];
-        if (pid !== VIDEO_PID) {
-            origPacket.copy(resultTS, i);
-            continue;
-        }
-
-        const payloadStart = (origPacket[1] & 0x40) !== 0;
-        const adaptation = (origPacket[3] & 0x20) !== 0;
-        const payload = (origPacket[3] & 0x10) !== 0;
+        const payloadStart = (packet[1] & 0x40) !== 0;
+        const adaptation = (packet[3] & 0x20) !== 0;
+        const payload = (packet[3] & 0x10) !== 0;
 
         let offset = 4;
         if (adaptation && offset < 188) {
-            const adaptationLen = origPacket[offset];
+            const adaptationLen = packet[offset];
             offset += adaptationLen + 1;
         }
 
-        // 创建新包
-        const newPacket = Buffer.alloc(TS_PACKET_SIZE);
-        origPacket.copy(newPacket, 0, 0, offset);
-
         if (payload && offset < 188) {
-            const data = origPacket.subarray(offset);
-
             if (payloadStart) {
-                // PES包开始 - 复制PES头
                 let pesHeaderEnd = 9;
+                const data = packet.subarray(offset);
                 if (data.length >= 9) {
                     pesHeaderEnd = 9 + data[8];
                 }
                 pesHeaderEnd = Math.min(pesHeaderEnd, data.length);
 
-                origPacket.copy(newPacket, offset, offset, offset + pesHeaderEnd);
-                offset += pesHeaderEnd;
-
-                // 填充解密后的H.264数据
-                const remaining = TS_PACKET_SIZE - offset;
-                const toCopy = Math.min(remaining, decryptedH264.length - h264Offset);
-                if (toCopy > 0) {
-                    decryptedH264.copy(newPacket, offset, h264Offset, h264Offset + toCopy);
-                    h264Offset += toCopy;
-                    offset += toCopy;
-                }
-                newPacket.fill(0xFF, offset);
-            } else {
-                // 继续填充数据
-                const remaining = TS_PACKET_SIZE - offset;
-                const toCopy = Math.min(remaining, decryptedH264.length - h264Offset);
-                if (toCopy > 0) {
-                    decryptedH264.copy(newPacket, offset, h264Offset, h264Offset + toCopy);
-                    h264Offset += toCopy;
-                    offset += toCopy;
-                }
-                newPacket.fill(0xFF, offset);
+                const pesPayload = packet.subarray(offset + pesHeaderEnd);
+                pesPayload.copy(h264Data, h264WritePos);
+                h264WritePos += pesPayload.length;
+                inPES = true;
+            } else if (inPES) {
+                const data = packet.subarray(offset);
+                data.copy(h264Data, h264WritePos);
+                h264WritePos += data.length;
             }
         }
-
-        newPacket.copy(resultTS, i);
     }
 
-    return resultTS;
+    // 解密H.264数据（原地修改）
+    const decryptedH264 = await decryptH264InPlace(h264Data);
+
+    // 第三遍扫描：将解密数据写回，原地修改originalTS
+    let h264ReadPos = 0;
+
+    for (let i = 0; i < originalTS.length; i += TS_PACKET_SIZE) {
+        if (i + TS_PACKET_SIZE > originalTS.length) break;
+
+        const pid = ((originalTS[i + 1] & 0x1F) << 8) | originalTS[i + 2];
+        if (pid !== VIDEO_PID) continue;
+
+        const payloadStart = (originalTS[i + 1] & 0x40) !== 0;
+        const adaptation = (originalTS[i + 3] & 0x20) !== 0;
+        const payload = (originalTS[i + 3] & 0x10) !== 0;
+
+        let offset = 4;
+        if (adaptation && offset < 188) {
+            const adaptationLen = originalTS[i + offset];
+            offset += adaptationLen + 1;
+        }
+
+        if (payload && offset < 188) {
+            if (payloadStart) {
+                let pesHeaderEnd = 9;
+                if (offset + 9 <= 188) {
+                    pesHeaderEnd = 9 + originalTS[i + offset + 8];
+                }
+                pesHeaderEnd = Math.min(pesHeaderEnd, 188 - offset);
+
+                // 跳过PES头，直接写入解密后的H.264数据
+                const writeOffset = i + offset + pesHeaderEnd;
+                const remaining = 188 - offset - pesHeaderEnd;
+                const toCopy = Math.min(remaining, decryptedH264.length - h264ReadPos);
+
+                if (toCopy > 0) {
+                    decryptedH264.copy(originalTS, writeOffset, h264ReadPos, h264ReadPos + toCopy);
+                    h264ReadPos += toCopy;
+                }
+
+                // 填充剩余空间
+                if (toCopy < remaining) {
+                    originalTS.fill(0xFF, writeOffset + toCopy, i + 188);
+                }
+            } else {
+                const writeOffset = i + offset;
+                const remaining = 188 - offset;
+                const toCopy = Math.min(remaining, decryptedH264.length - h264ReadPos);
+
+                if (toCopy > 0) {
+                    decryptedH264.copy(originalTS, writeOffset, h264ReadPos, h264ReadPos + toCopy);
+                    h264ReadPos += toCopy;
+                }
+
+                if (toCopy < remaining) {
+                    originalTS.fill(0xFF, writeOffset + toCopy, i + 188);
+                }
+            }
+        }
+    }
+
+    return originalTS;
 }
 
 // ==================== 主处理函数 ====================

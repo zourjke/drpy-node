@@ -1,6 +1,7 @@
 // fileHeaderManager.js
 import fs from 'fs/promises';
 import path from 'path';
+import '../libs_drpy/_dist/json5.js';
 
 class FileHeaderManager {
     static COMMENT_CONFIG = {
@@ -21,11 +22,22 @@ class FileHeaderManager {
             headerRegex: /@header\(([\s\S]*?)\)/,
             createComment: (content) => `"""\n${content}\n"""`,
             topCommentsRegex: /^(\s*(#[^\n]*\n|'''[\s\S]*?'''|"""[\s\S]*?""")\s*)+/
+        },
+        '.php': {
+            start: '/*',
+            end: '*/',
+            // PHP 文件通常以 <?php 开头，注释块可能在 <?php 之后
+            regex: /(<\?php\s*)?(\s*\/\*[\s\S]*?\*\/)/,
+            headerRegex: /@header\(([\s\S]*?)\)/,
+            createComment: (content) => `/*\n${content}\n*/`,
+            topCommentsRegex: /(<\?php\s*)?(\s*(\/\/[^\n]*\n|\/\*[\s\S]*?\*\/)\s*)+/
         }
     };
 
+
     /**
      * Find the @header(...) block in the comment text
+     * Optimized state machine for parsing nested structures
      * @param {string} text Comment text
      * @param {string} ext File extension (.js or .py)
      * @returns {Object|null} { start, end, content }
@@ -37,40 +49,31 @@ class FileHeaderManager {
 
         let index = startIndex + startMarker.length;
         let balance = 1;
-        let inString = false;
-        let stringChar = '';
-        let escape = false;
-        let inLineComment = false;
-
-        for (; index < text.length; index++) {
+        const len = text.length;
+        
+        // Fast scan loop
+        while (index < len) {
             const char = text[index];
 
-            if (inLineComment) {
-                if (char === '\n') inLineComment = false;
-                continue;
-            }
-
-            if (inString) {
-                if (escape) {
-                    escape = false;
-                } else if (char === '\\') {
-                    escape = true;
-                } else if (char === stringChar) {
-                    inString = false;
+            // 1. String literal detection (Most common content inside JSON)
+            if (char === '"' || char === "'") {
+                const quote = char;
+                index++;
+                while (index < len) {
+                    const c = text[index];
+                    if (c === '\\') {
+                        index += 2; // Skip escaped char
+                    } else if (c === quote) {
+                        index++; // Include closing quote
+                        break; // End of string
+                    } else {
+                        index++;
+                    }
                 }
-                continue;
-            }
-
-            // Start of comment
-            if (char === '/' && text[index + 1] === '/') {
-                inLineComment = true;
-                index++; 
-            } else if (ext === '.py' && char === '#') {
-                inLineComment = true;
-            } else if (char === '"' || char === "'") {
-                inString = true;
-                stringChar = char;
-            } else if (char === '(') {
+                continue; // Continue outer loop
+            } 
+            // 2. Parentheses balance
+            else if (char === '(') {
                 balance++;
             } else if (char === ')') {
                 balance--;
@@ -82,27 +85,54 @@ class FileHeaderManager {
                     };
                 }
             }
+            // 3. Comments skipping (Only if strictly needed inside header object, usually standard JSON doesn't have comments but JS objects might)
+            // Optimization: Assume standard JSON5/JS object format inside @header, check for comments only if / or # encountered
+            else if (char === '/') {
+                const next = text[index + 1];
+                if (next === '/') { // Line comment
+                    index += 2;
+                    const newline = text.indexOf('\n', index);
+                    index = newline === -1 ? len : newline;
+                    continue;
+                } else if (next === '*') { // Block comment
+                    index += 2;
+                    const endComment = text.indexOf('*/', index);
+                    if (endComment === -1) { index = len; } 
+                    else { index = endComment + 2; }
+                    continue;
+                }
+            }
+            else if (ext === '.py' && char === '#') { // Python comment
+                 const newline = text.indexOf('\n', index + 1);
+                 index = newline === -1 ? len : newline;
+                 continue;
+            }
+
+            index++;
         }
         return null;
     }
 
     /**
-     * 解析JavaScript对象字面量（支持无引号属性名）
+     * 解析对象字符串
      * @param {string} str 对象字符串
      * @returns {Object} 解析后的对象
      */
     static parseObjectLiteral(str) {
-        const normalized = str
-            .replace(/([{,]\s*)([a-zA-Z_$][\w$]*)(\s*:)/g, '$1"$2"$3')
-            .replace(/'([^']+)'/g, '"$1"');
-
         try {
-            return JSON.parse(normalized);
+            return JSON5.parse(str);
         } catch (e) {
+            // console.warn('JSON5 parse failed, falling back to eval:', e.message);
             try {
+                // 尝试处理一些常见的非标准JSON格式
+                // 1. 给未加引号的键加上引号 (简单的正则替换，不够完美但能处理大部分情况)
+                // 注意：这里不再做简单的正则替换，因为 JSON5 已经能处理无引号键。
+                // 如果 JSON5 失败，很可能是因为包含了函数或其他非数据类型，或者格式严重错误。
+                
+                // 为了兼容旧的非标准写法，保留 eval 方式作为最后的手段
                 return (new Function(`return ${str}`))();
-            } catch {
-                throw new Error(`Invalid header object: ${str}`);
+            } catch (evalError) {
+                throw new Error(`Invalid header object: ${str}. Error: ${evalError.message}`);
             }
         }
     }
@@ -113,6 +143,7 @@ class FileHeaderManager {
      * @returns {Object|null} 头信息对象
      */
     static async readHeader(filePath) {
+        // 对于大多数脚本文件（通常 < 1MB），直接全量读取比 open+read+close 更快
         const content = await fs.readFile(filePath, 'utf8');
         const ext = path.extname(filePath);
         const config = this.COMMENT_CONFIG[ext];
@@ -181,6 +212,19 @@ class FileHeaderManager {
             throw new Error('Invalid header object');
         }
 
+        const ext = path.extname(filePath);
+        const config = this.COMMENT_CONFIG[ext];
+
+        if (!config) throw new Error(`Unsupported file type: ${ext}`);
+
+        const headerStr = `@header(${JSON5.stringify(headerObj, null, 2)})`;
+
+        // 尝试使用 Buffer 优化写入 (针对已存在 header 的情况)
+        const bufferSuccess = await this._replaceHeaderBuffer(filePath, headerStr, config, ext);
+        if (bufferSuccess) {
+            return;
+        }
+
         let content;
         try {
             content = await fs.readFile(filePath, 'utf8');
@@ -188,17 +232,11 @@ class FileHeaderManager {
             throw new Error(`Failed to read file: ${error.message}`);
         }
 
-        // 备份原始内容
-        const originalContent = content;
-        const ext = path.extname(filePath);
-        const config = this.COMMENT_CONFIG[ext];
+        // 优化：先尝试只读取头部来匹配正则，避免全量匹配
+        // 但由于 writeHeader 需要重写整个文件，全量内容是必须的
+        // 所以这里的优化点主要在于减少不必要的全量正则匹配
 
-        if (!config) throw new Error(`Unsupported file type: ${ext}`);
-
-        const headerStr = `@header(${JSON.stringify(headerObj, null, 2)
-            .replace(/"([a-zA-Z_$][\w$]*)":/g, '$1:')
-            .replace(/"/g, "'")})`;
-
+        // 使用优化后的 regex 只匹配头部注释
         const match = content.match(config.regex);
         let newContent;
 
@@ -209,10 +247,23 @@ class FileHeaderManager {
 
             // 确保匹配的注释块确实在文件开头（允许前面有空白字符）
             const beforeComment = content.substring(0, commentStartIndex);
-            if (beforeComment.trim() !== '') {
-                // 如果注释块前面有非空白内容，说明这不是文件头注释，创建新的头注释
-                const newComment = config.createComment(headerStr) + '\n\n';
-                newContent = newComment + content;
+            
+            // 针对 PHP 特殊处理：忽略开头的 <?php 
+            const isEffectiveStart = beforeComment.trim() === '' || (ext === '.php' && beforeComment.trim() === '<?php');
+
+            if (!isEffectiveStart) {
+                // 如果注释块前面有非空白内容（且不是允许的PHP标签），说明这不是文件头注释，创建新的头注释
+                let newComment = config.createComment(headerStr) + '\n\n';
+                
+                if (ext === '.php') {
+                    if (content.trim().startsWith('<?php')) {
+                        newContent = content.replace(/<\?php\s*/, `<?php\n\n${newComment.trim()}\n\n`);
+                    } else {
+                        newContent = `<?php\n\n${newComment.trim()}\n\n` + content;
+                    }
+                } else {
+                    newContent = newComment + content;
+                }
             } else {
                 // 这是文件头注释，进行更新
                 const headerBlock = this.findHeaderBlock(fullComment, ext);
@@ -227,10 +278,32 @@ class FileHeaderManager {
                         content.substring(commentEndIndex);
                 } else {
                     // 不存在@header，添加到注释块中
-                    const updatedComment = fullComment
+                    // 对于 PHP 文件，需要特别处理，确保注释闭合符 */ 在最后
+                    const trimmedComment = fullComment.trim();
+                    let updatedComment;
+                    
+                    if (ext === '.php' && trimmedComment.startsWith('<?php')) {
+                        // 处理 <?php 开头的 PHP 文件注释
+                        // 这里的 fullComment 包含了 <?php 和随后的注释块
+                        // 我们需要找到注释的结束位置
+                        const endMarker = config.end;
+                        const lastIndex = fullComment.lastIndexOf(endMarker);
+                        
+                        if (lastIndex !== -1) {
+                             updatedComment = fullComment.substring(0, lastIndex).trim() 
+                                + `\n${headerStr}\n${endMarker}` 
+                                + fullComment.substring(lastIndex + endMarker.length);
+                        } else {
+                            // 异常情况，直接追加
+                            updatedComment = fullComment + `\n${config.createComment(headerStr)}`;
+                        }
+                    } else {
+                         updatedComment = fullComment
                             .replace(config.end, '')
                             .trim()
                         + `\n${headerStr}\n${config.end}`;
+                    }
+
                     newContent = content.substring(0, commentStartIndex) +
                         updatedComment +
                         content.substring(commentEndIndex);
@@ -238,8 +311,21 @@ class FileHeaderManager {
             }
         } else {
             // 没有找到注释块，在文件开头创建新的
-            const newComment = config.createComment(headerStr) + '\n\n';
-            newContent = newComment + content;
+            let newComment = config.createComment(headerStr) + '\n\n';
+            
+            // PHP 特殊处理：确保 <?php 在最前面
+            if (ext === '.php') {
+                if (content.trim().startsWith('<?php')) {
+                    // 如果文件已经以 <?php 开头，把注释插到 <?php 后面
+                    newContent = content.replace(/<\?php\s*/, `<?php\n\n${newComment.trim()}\n\n`);
+                } else {
+                    // 如果没有 <?php (可能是纯 HTML 混编? 或者短标签?) 
+                    // 假设用户想要标准的 PHP 文件头
+                    newContent = `<?php\n\n${newComment.trim()}\n\n` + content;
+                }
+            } else {
+                newContent = newComment + content;
+            }
         }
 
         // 确保新内容不只包含文件头
@@ -253,25 +339,11 @@ class FileHeaderManager {
             throw new Error('Generated content is empty, operation aborted');
         }
 
-        // 简单的内容完整性检查：确保新内容包含原始内容的大部分非注释代码
-        const originalCodeLines = originalContent.split('\n').filter(line => {
-            const trimmed = line.trim();
-            return trimmed && !trimmed.startsWith('//') && !trimmed.startsWith('/*') &&
-                !trimmed.startsWith('*') && !trimmed.startsWith('*/') &&
-                !trimmed.startsWith('#') && !trimmed.startsWith('"""') && !trimmed.startsWith("'''");
-        });
-
-        const newCodeLines = newContent.split('\n').filter(line => {
-            const trimmed = line.trim();
-            return trimmed && !trimmed.startsWith('//') && !trimmed.startsWith('/*') &&
-                !trimmed.startsWith('*') && !trimmed.startsWith('*/') &&
-                !trimmed.startsWith('#') && !trimmed.startsWith('"""') && !trimmed.startsWith("'''") &&
-                !trimmed.includes('@header(');
-        });
-
-        // 如果新内容的代码行数比原始内容少了很多，可能出现了问题
-        if (originalCodeLines.length > 5 && newCodeLines.length < originalCodeLines.length * 0.8) {
-            throw new Error('Content integrity check failed: significant code loss detected, operation aborted');
+        // 简单的内容完整性检查：确保新内容大小与原始内容大小差异在合理范围内
+        // 移除复杂的行级比对以提升性能
+        const diffRatio = Math.abs(newContent.length - content.length) / content.length;
+        if (content.length > 100 && diffRatio > 0.5 && newContent.length < content.length) {
+             throw new Error('Content integrity check failed: significant size reduction detected, operation aborted');
         }
 
         // 创建备份（如果启用）
@@ -308,6 +380,119 @@ class FileHeaderManager {
             throw new Error(`Failed to write file: ${error.message}`);
         }
     }
+
+    /**
+     * 使用 Buffer 高效地替换文件头，避免大文件 String 转换开销
+     * @private
+     */
+    static async _replaceHeaderBuffer(filePath, headerStr, config, ext) {
+         let handle;
+         try {
+             handle = await fs.open(filePath, 'r');
+             const stats = await handle.stat();
+             
+             // 如果文件太小，Buffer 优化的开销可能不划算，fallback 到 string 处理
+             // 或者如果文件太大 (如 > 5MB)，我们只读取前 64KB 寻找 header
+             const MAX_SCAN_SIZE = 64 * 1024; // 64KB
+             const scanSize = Math.min(stats.size, MAX_SCAN_SIZE);
+             
+             const buffer = Buffer.alloc(scanSize);
+             await handle.read(buffer, 0, scanSize, 0);
+             await handle.close();
+             handle = null;
+             
+             // 将 buffer 转为 string 进行正则匹配 (只转前 64KB)
+             const contentHead = buffer.toString('utf8');
+             
+             const match = contentHead.match(config.regex);
+             
+             if (match) {
+                 const [fullComment] = match;
+                 // 找到 headerBlock
+                 const headerBlock = this.findHeaderBlock(fullComment, ext);
+                 
+                 if (headerBlock) {
+                     // 计算 headerBlock 在文件中的 byte offset
+                     // 注意：fullComment 是 regex 匹配出来的 string
+                     // 我们需要找到 fullComment 在 buffer 中的 byte offset
+                     
+                     // Buffer.indexOf(string) 可以找到 byte offset
+                     // 但 regex 匹配的 fullComment 可能包含 unicode，直接 indexOf string 是安全的
+                     // 前提是 encoding 一致 (utf8)
+                     
+                     const commentStartOffset = buffer.indexOf(fullComment);
+                     if (commentStartOffset === -1) {
+                         // Fallback if not found (encoding issues?)
+                         return false; 
+                     }
+                     
+                     // headerBlock.start 是相对于 fullComment 字符串的 char index
+                     // 我们需要 byte index。这有点麻烦，因为 fullComment 可能包含多字节字符。
+                     // 所以我们需要把 fullComment.substring(0, headerBlock.start) 转为 Buffer 算长度
+                     
+                     const preHeaderStr = fullComment.substring(0, headerBlock.start);
+                     const preHeaderLen = Buffer.byteLength(preHeaderStr);
+                     
+                     const postHeaderStr = fullComment.substring(headerBlock.end);
+                     
+                     // 构造新的 header buffer
+                     const newHeaderBuf = Buffer.from(headerStr);
+                     
+                     // 计算替换点
+                     const replaceStart = commentStartOffset + preHeaderLen;
+                     
+                     // 原有的 header content byte length
+                     const oldHeaderContentStr = headerBlock.content; // 这里包含了 header(...) 括号内的内容? 
+                     // findHeaderBlock 返回的是 {start, end, content}
+                     // start/end 是相对于 fullComment 的 index
+                     // content 是 header(...) 括号内的内容，还是 @header(...)?
+                     // 看 findHeaderBlock 实现:
+                     // content: text.substring(startIndex + startMarker.length, index) -> 只是括号内的内容
+                     // start: startIndex ( "@" 的位置 )
+                     // end: index + 1 ( ")" 后面的位置 )
+                     
+                     // 所以 headerBlock.start 指向 "@header" 的 "@"
+                     // headerBlock.end 指向 ")" 后面
+                     
+                     // 原始的 header 部分 (string)
+                     const oldHeaderFullStr = fullComment.substring(headerBlock.start, headerBlock.end);
+                     const oldHeaderByteLen = Buffer.byteLength(oldHeaderFullStr);
+                     
+                     // 准备写入
+                     // 如果新旧 header 长度一致，可以直接 overwrite (极快)
+                     // 如果不一致，需要重写文件剩余部分
+                     
+                     if (newHeaderBuf.length === oldHeaderByteLen) {
+                         // Overwrite inplace
+                         const writeHandle = await fs.open(filePath, 'r+');
+                         await writeHandle.write(newHeaderBuf, 0, newHeaderBuf.length, replaceStart);
+                         await writeHandle.close();
+                         return true;
+                     } else {
+                         // 重写文件
+                         // 读取整个文件为 Buffer 然后 concat
+                         // 避免 string 转换
+                         
+                         const fullFileBuf = await fs.readFile(filePath);
+                         const finalBuf = Buffer.concat([
+                             fullFileBuf.subarray(0, replaceStart),
+                             newHeaderBuf,
+                             fullFileBuf.subarray(replaceStart + oldHeaderByteLen)
+                         ]);
+                         
+                         await fs.writeFile(filePath, finalBuf);
+                         return true;
+                     }
+                 }
+             }
+             
+             return false; // Fallback to string mode if no match or complex case
+         } catch (e) {
+             if (handle) await handle.close();
+             return false;
+         }
+    }
+
 
     /**
      * 移除头信息区域
@@ -361,22 +546,41 @@ class FileHeaderManager {
         const headerBlock = this.findHeaderBlock(fullComment, ext);
         
         if (headerBlock) {
-            const innerContent = fullComment.substring(0, headerBlock.start) + 
-                               fullComment.substring(headerBlock.end);
+            // 获取 header 之前和之后的内容
+            let beforeHeader = fullComment.substring(0, headerBlock.start);
+            let afterHeader = fullComment.substring(headerBlock.end);
             
-            // Clean up inner content
-            let cleanedInner = innerContent
-                .replace(config.start, '')
-                .replace(config.end, '')
+            // 移除注释开始符和结束符
+            beforeHeader = beforeHeader.replace(config.start, '');
+            afterHeader = afterHeader.replace(config.end, '');
+            
+            // PHP: 如果是 <?php 开头，清理掉 <?php
+            if (ext === '.php') {
+                beforeHeader = beforeHeader.replace(/<\?php\s*/, '');
+            }
+            
+            // 合并并清理
+            let cleanedInner = (beforeHeader + '\n' + afterHeader)
                 .split('\n')
-                .filter(line => line.trim().length > 0)
+                .map(line => line.trim())
+                .filter(line => line.length > 0)
                 .join('\n');
 
-            if (!cleanedInner.trim()) {
-                content = content.replace(fullComment, '');
+            if (!cleanedInner) {
+                // 如果只剩下 header，整个注释块移除
+                // 但如果是 PHP 文件，<?php 应该保留
+                if (ext === '.php' && fullComment.trim().startsWith('<?php')) {
+                    content = content.replace(fullComment, '<?php\n');
+                } else {
+                    content = content.replace(fullComment, '');
+                }
             } else {
-                const newComment = `${config.start}\n${cleanedInner}\n${config.end}`;
-                content = content.replace(fullComment, newComment);
+                let newComment = `${config.start}\n${cleanedInner}\n${config.end}`;
+                // PHP: 保持 <?php 在前
+                if (ext === '.php' && fullComment.trim().startsWith('<?php')) {
+                    newComment = `<?php\n\n${newComment}`;
+                }
+                content = content.replace(fullComment, () => newComment);
             }
         }
 

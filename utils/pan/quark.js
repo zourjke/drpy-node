@@ -1029,7 +1029,7 @@ class QuarkHandler {
                 'sec-ch-ua-mobile': '?0',
                 'sec-ch-ua-platform': '"Windows"',
                 'referer': 'https://pan.quark.cn/',
-                'Cookie': '_UP_A4A_11_=wb9ce1f8a7f74209b248cb5877a6a876; _UP_D_=pc; tfstk=gy2rZY6dQTBPmYbgblDFQOhX71M-pv7_ZJgIxkqnV40oVYZ3gkZN2Da7x2PEoyIJFYbJK2qTkbguRYTFLrko97gIP2kUvPSf5O6_2uHKEN_1C6GsZ4kK-9MhGxcbeD-R5O6_quHKKN__NjmeBVnnK0co-Ejq2qmoxy0oiEmZXv03-yj4mqnnK24nKirmkDDn-ycsi2063cllqNA0iO9nAbugqqJU2-ooaQEoupv33dGrSyg2Kp2q2kJ_DBpNOVVtPfguot9rLomUufNP7LzUxlFngJ8lVP40TymYMwRE7Wq76-GXxG0geo2tnj6Gbo2YPue4AHXncPg028DFIGHrE4DqDJ_vE2P0t8G-pUbEJ-r0EWSz_enc4z2LaeAEZmnq5iSVbveZi_88v3Rp9bFx0VsR2BdKZmnq5iS29BhoDmu10i5..; __uid=AARfyLe8Bke3UGL2FjhvNQn6; __sdid=AATHIp7rA8mvfKhhMvPnt0milUEzXi1ReJN0CjChc4LeUA6qYUdYA32jmaL/Lk2AA4s=; __pus=bd604e2725229c945e994c227de77f1cAASVpc7pXsTooap3JBI0XiJI9JU/JUngO9SJCOIRNOLXngLdOfozAiiwF9CnY/xOiEgE8NvKDDg1ZAwX7nVqe9H2ib5aMTAi+a2DfaPE6/6Won1vUOAfKCNELRmJOeYhVn3/eQUYx6B9EIw9HCYjQoKVh76daPI2lnp3QBTK/5zWGya9rVul08y86xpY3APre7I=; __kp=eb241d80-1ee6-11f1-85bf-6167dfcf1acd; __kuus=NenaSYNIw/O9SzABV2HtnjTDoH5aJthk7nOgDdt9pHeaJmMkCD/TY+jVFIrCn+WeFaQVR9h+E/YoStTBZAtB9va0ghzlZCgNuddki8Z8WOnYug==; __puus=2baf96cce907422be5e242bb1d280977AATi54Q/fKnsA5nM/iG/TZHL12hYZj/ELuUFbEwO/2jIXaSGwmvXppDKCITu73rdsZ1hRR0cY2QRpWdM0o+nFv65fCf5ZwPIaGHvUK9BOg3653jTngpTAj41u8kq5vTIDnPDPGWlYPYiUehDbyYBwxKYl12BFSjonkfKybr3Fpc2TYQcm566OQTrPzsupcOkOoa8CQllYvsoVyEBF2ZpiX/5'
+                'Cookie': this.cookie
             },
             data: data
         };
@@ -1060,7 +1060,7 @@ class QuarkHandler {
                 'Accept': '*/*,application/json;charset=utf-8',
                 'Accept-Encoding': 'gzip, deflate, br, zstd',
                 'Content-Type': 'application/json',
-                'Cookie': 'b-user-id=7a421e0c-2ff4-1251-4069-cdfbfedcaf8d; _UP_A4A_11_=wb9cf15ce78d47ed921a9fab3faa85e8; xlly_s=1; __sdid=AAQCvlprpJtHMDSTmliW7CTXaxFJONVhZZyKc8NgJ6Y+XH4iO1v3Q8gYFeEi2hqeV4U=; _UP_D_=pc; __pus=97012d074b8d70d6eeaeb7dbe3fcb05dAAQB4QUahCaghYFA9y/NYud63QbrjWpcO/mp4OgGcA2UZ5O+VMUlfCpacaDzbRBV2O/DK9y9iAFBUL7iPmzdj2d9; __kp=ea759a90-1ed1-11f1-8f67-e7e56f2ee996; __kps=AARfyLe8Bke3UGL2FjhvNQn6; __ktd=axb8KS+96BcSmmEd+gddqg==; __uid=AARfyLe8Bke3UGL2FjhvNQn6; __puus=c6ca8123ab4024f139092c58678de061AATi54Q/fKnsA5nM/iG/TZHLzf8buD1i2D3OKKcgKFxmYvTq9ypLK3mbAQlXFlJz6zEGV7aROE4eXsRbMGviOH4EpwIMv8HZ3UUDPfRoIVsx+mV9xMqXujCxpQR96l9Alpe2B15pFBZl94/lBMSORn+M/cocX9mAe2wX82JvYhQYO46JRC1evvevyyyzaai9ItKcf72BRC6QzioBIic/XHI8; isg=BDg4TjMppS-k-Mk0_qdGtZTlCebKoZwrBz4YK3KgQXMmjdJ3GrWXu63lQY093VQD; tfstk=gTJiuT2wCC5_fZaEErWsOziN8jlKBO6X3EeAktQqTw7Ckctv0ty2knBOgVtv-Z7F2SJA0f_cTUs7_CCZSemDWnwA7NpAns8RR5Rx5qtFmULRuiSqcMkeuUYcGc_AuZYv0CnKeYK6ft62o4H-emTk0mLcbsyaLmScDPod_tj5i4Wqy4HL9k5sWt-TUIxGLH7CmiyNuEWULi7Ubl8V76zFqg6VuE8VTWSRcGPN7N-UTwsV3Z8V3DXFRiXVuEWqxHllpf763pJErkLuNeO_cCsGsa-N7nKvLPWT1nQ33-JHt1brQw243pjM09gPi8cAzQ_Owa8EpRXDYiYhwC0uIEx2VI5HnPo9zeRDuMOIoSbkghdWp6E4_HvcS_JNtoiJ4hs2usAIr8IGBBfkICib8h8RSQW6Du09x_AhNM5Um5W9w3pfadkgPwC5mefJs42MzglbT7y5t-sEDpPbG1SCxapyAdOShopf3Dm3am1NAG_-xDVbG1SCxannx7kf_Ms1y'
+                'Cookie': this.cookie
             },
             data: data
         };
