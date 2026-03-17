@@ -108,9 +108,15 @@ export const manage_config = async (args) => {
 
 export const restart_service = async () => {
     try {
-        await execPromise("pm2 restart drpys");
-        return { content: [{ type: "text", text: "Service restart command issued." }] };
+        // Check if running under PM2
+        try {
+            await execPromise("pm2 restart drpys");
+            return { content: [{ type: "text", text: JSON.stringify({ success: true, message: "服务已通过 PM2 重启" }) }] };
+        } catch (pm2Error) {
+            // Not running under PM2, return helpful message
+            return { content: [{ type: "text", text: JSON.stringify({ success: false, message: "当前未使用 PM2 运行。请在终端中手动重启服务：\n1. 按 Ctrl+C 停止当前服务\n2. 运行 npm run dev 重新启动" }) }] };
+        }
     } catch (e) {
-        return { isError: true, content: [{ type: "text", text: `Failed to restart service: ${e.message}` }] };
+        return { isError: true, content: [{ type: "text", text: JSON.stringify({ success: false, message: `重启失败: ${e.message}` }) }] };
     }
 };

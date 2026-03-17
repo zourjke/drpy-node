@@ -45,7 +45,8 @@ const require = (moduleName) => {
     conditionNames: ['node', 'import'],
     alias: {
       'pako': path.resolve(__dirname, '../libs_drpy/pako.min.js'),
-      'puppeteer': path.resolve(__dirname, 'puppeteer-mock.js')
+      'puppeteer': path.resolve(__dirname, 'puppeteer-mock.js'),
+      [path.resolve(__dirname, '../libs_drpy/jsonpathplus.min.js')]: path.resolve(__dirname, 'shim/jsonpath-shim.js')
     }
   },
   external: (id) => {

@@ -9,7 +9,7 @@ EXCLUDE_DIRS = ['.git', '.idea', 'soft', 'examples', 'apps/cat', 'plugins/pvideo
                 'pyTools', 'drop_code',
                 'local', 'logs',
                 '对话1.txt',
-                'vod_cache', 'data/mv', 'drpy-node-mcp', 'drpy-node-bundle', 'drpy2-quickjs']
+                'vod_cache', 'data/mv', 'drpy-node-mcp', 'drpy-node-bundle', 'drpy-node-admin', 'drpy2-quickjs']
 
 # 要排除的文件列表
 EXCLUDE_FILES = ['config/env.json', '.env', '.claude', 'clipboard.txt', 'clipboard.txt.bak', '.plugins.js', 'yarn.lock',

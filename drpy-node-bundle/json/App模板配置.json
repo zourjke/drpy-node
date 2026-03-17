@@ -1,0 +1,253 @@
+{
+    "Appget": {
+        "示例": {
+            "muban": "模板类型(AppGet,AppQiji)",
+            "host": "host和hosturl二填一",
+            "hosturl": "域名地址",
+            "key": "数据加解密秘钥",
+            "iv": "一般同上",
+            "verify": "是否启用搜索验证，字符串true或false",
+            "username": "APP账号用户名",
+            "password": "APP账号密码",
+            "会员时长": "会员函数(gzip压缩)",
+            "lazyheader": "视频播放请求头,JSON格式"
+        },
+        "蓝鹰": {
+            "muban": "AppQiji",
+            "host": "",
+            "hosturl": "https://lanyinghz.oss-cn-hangzhou.aliyuncs.com/lanyingxmy.txt",
+            "key": "ca94b06ca359d80e",
+            "iv": "ca94b06ca359d80e",
+            "verify": "true",
+            "username": "",
+            "password": "",
+            "会员时长": "",
+            "lazyheader": {}
+        },
+        "仓鼠": {
+            "muban": "AppQiji",
+            "host": "https://hk440cms.cs4k.top",
+            "hosturl": "",
+            "key": "fL7sY4zN4kB3pG4p",
+            "iv": "fL7sY4zN4kB3pG4p",
+            "verify": "true"
+        },
+        "云云": {
+            "muban": "AppQiji",
+            "host": "",
+            "hosturl": "https://staraugust123456.oss-cn-hangzhou.aliyuncs.com/2.txt",
+            "key": "staraugust123456",
+            "iv": "staraugust123456",
+            "verify": "true"
+        },
+        "奇奇": {
+            "muban": "AppQiji",
+            "host": "",
+            "hosturl": "https://yun-1316442804.cos.ap-guangzhou.myqcloud.com/a.txt",
+            "key": "123456789abcdefg",
+            "iv": "123456789abcdefg",
+            "verify": "true"
+        },
+        "鲸鱼": {
+            "muban": "AppQiji",
+            "host": "",
+            "hosturl": "https://jingyu4k-1312635929.cos.ap-nanjing.myqcloud.com/1.json",
+            "key": "AAdgrdghjfgswerA",
+            "iv": "AAdgrdghjfgswerA",
+            "verify": "true"
+        },
+        "咖啡": {
+            "muban": "AppQiji",
+            "host": "",
+            "hosturl": "https://daen-1256234123.cos.ap-shanghai.myqcloud.com/MuQi/mqxh.txt",
+            "key": "37kj83zs1q16jk6t",
+            "iv": "37kj83zs1q16jk6t",
+            "verify": "true"
+        },
+        "小猪": {
+            "muban": "AppQiji",
+            "host": "",
+            "hosturl": "https://tiantangyoulu.oss-cn-beijing.aliyuncs.com/tengxunyun.txt",
+            "key": "seb5tq9mykp2w9ry",
+            "iv": "seb5tq9mykp2w9ry",
+            "verify": "true"
+        },
+        "影视": {
+            "muban": "AppQiji",
+            "host": "",
+            "hosturl": "https://aysappto.oss-cn-chengdu.aliyuncs.com/qj2.txt",
+            "key": "sada21321sdq231d",
+            "iv": "sada21321sdq231d",
+            "verify": "true"
+        },
+        "优兔": {
+            "muban": "AppQiji",
+            "host": "",
+            "hosturl": "https://uututv-1319209748.cos.ap-shanghai.myqcloud.com/uutuv4.txt",
+            "key": "UrWKPnmQWJA8AQzd",
+            "iv": "UrWKPnmQWJA8AQzd",
+            "verify": "true"
+        },
+        "王子": {
+            "muban": "AppGet",
+            "host": "https://app.95112475.xyz",
+            "hosturl": "",
+            "key": "5a9w6x58dsq6z3a6",
+            "iv": "5a9w6x58dsq6z3a6",
+            "verify": "true"
+        },
+        "紫金": {
+            "muban": "AppGet",
+            "host": "",
+            "hosturl": "https://snysw.xyz/mf4kzs327.txt",
+            "key": "1234567887654321",
+            "iv": "1234567887654321",
+            "verify": "true"
+        },
+        "数字": {
+            "muban": "AppGet",
+            "host": "http://app1-0-0.87333.cc",
+            "hosturl": "",
+            "key": "VwsHxkCViDXEExWa",
+            "iv": "VwsHxkCViDXEExWa",
+            "verify": "true"
+        },
+        "火锅": {
+            "muban": "AppGet",
+            "host": "https://ios.hgyx.vip",
+            "hosturl": "",
+            "key": "062dec75d039980e",
+            "iv": "062dec75d039980e",
+            "verify": "true"
+        },
+        "五八": {
+            "muban": "AppGet",
+            "host": "https://dy.58ys.vip",
+            "hosturl": "",
+            "key": "JEWibY1AgWF0V1xx",
+            "iv": "JEWibY1AgWF0V1xx",
+            "verify": "true"
+        },
+        "旗星": {
+            "muban": "AppGet",
+            "host": "http://ys.qist.top",
+            "hosturl": "",
+            "key": "2SWSPFxugBLPPOKo",
+            "iv": "2SWSPFxugBLPPOKo",
+            "verify": "true"
+        },
+        "灵虎": {
+            "muban": "AppGet",
+            "host": "",
+            "hosturl": "https://bind.315999.xyz/89.txt",
+            "key": "#getapp@TMD@2025",
+            "iv": "#getapp@TMD@2025",
+            "verify": "true"
+        },
+        "剧梦": {
+            "muban": "AppGet",
+            "host": "https://www.jumengwu.com",
+            "hosturl": "",
+            "key": "1f0a873caf2550a5",
+            "iv": "1f0a873caf2550a5",
+            "verify": "true"
+        },
+        "火狐": {
+            "muban": "AppGet",
+            "host": "http://huohu.yihn.cc",
+            "hosturl": "",
+            "key": "huohushipingetap",
+            "iv": "huohushipingetap",
+            "verify": "true"
+        },
+        "金牌": {
+            "muban": "AppQiji",
+            "host": "",
+            "hosturl": "https://dtqj.ggtvb.cc/dtjp.txt",
+            "key": "eecbio48dsq131ee",
+            "iv": "eecbio48dsq131ee",
+            "verify": "true"
+        },
+        "爱盈": {
+            "muban": "AppQiji",
+            "host": "",
+            "hosturl": "https://aysappto.oss-cn-chengdu.aliyuncs.com/qj3.txt",
+            "key": "sda1231sasddad21",
+            "iv": "sda1231sasddad21",
+            "verify": "true"
+        },
+        "顾我": {
+            "muban": "AppQiji",
+            "host": "http://117.50.204.35:520",
+            "hosturl": "",
+            "key": "ca94b06ca3c7d80e",
+            "iv": "ca94b06ca3c7d80e",
+            "verify": "true"
+        },
+        "爆炸": {
+            "muban": "AppQiji",
+            "host": "",
+            "hosturl": "https://daen-1256234123.cos.ap-shanghai.myqcloud.com/MuQi/mqxh.txt",
+            "key": "37kj83zs1q16jk6t",
+            "iv": "37kj83zs1q16jk6t",
+            "verify": "true"
+        },
+        "丫丫动漫": {
+            "muban": "AppGet",
+            "host": "http://tv.yy-fun.cc",
+            "hosturl": "",
+            "key": "qkxnwkfjwpcnwycl",
+            "iv": "qkxnwkfjwpcnwycl",
+            "verify": "true"
+        },
+        "番薯动漫": {
+            "muban": "AppGet",
+            "host": "https://new.app.bytegooty.com",
+            "hosturl": "",
+            "key": "N4yj7l7xKxHF4*gz",
+            "iv": "N4yj7l7xKxHF4*gz",
+            "verify": "true"
+        },
+        "咕咕动漫": {
+            "muban": "AppGet",
+            "host": "https://www.gugu3.com",
+            "hosturl": "",
+            "key": "nKfZ8KX6JTNWRzTD",
+            "iv": "nKfZ8KX6JTNWRzTD",
+            "verify": "true"
+        },
+        "元咲动漫": {
+            "muban": "AppGet",
+            "host": "http://cic.aicg.fun",
+            "hosturl": "",
+            "key": "2c4h36abd96se10u",
+            "iv": "2c4h36abd96se10u",
+            "verify": "true"
+        },
+        "方舟动漫": {
+            "muban": "AppGet",
+            "host": "https://www.cyfz.vip",
+            "hosturl": "",
+            "key": "e72cdfd629e8895d",
+            "iv": "e72cdfd629e8895d",
+            "verify": "true"
+        }
+    },
+    "Appmuou": {
+        "示例": {
+            "host": "",
+            "hosturl": "",
+            "version": ""
+        }
+    },
+    "AppShark": {
+        "示例": {
+            "host": "",
+            "hosturl": "",
+            "key": "",
+            "key1": "",
+            "key2": "",
+            "version": ""
+        }
+    }
+}

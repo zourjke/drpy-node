@@ -31,8 +31,46 @@ export const read_file = async (args) => {
     if (!filePath || !isSafePath(filePath)) {
         throw new Error("Invalid path");
     }
+
+    // Check if it's an image file
+    const imageExts = ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.bmp'];
+    const isImage = imageExts.some(ext => filePath.toLowerCase().endsWith(ext));
+
+    if (isImage) {
+        // Read as buffer and convert to base64
+        const buffer = await fs.readFile(resolvePath(filePath));
+        const base64 = buffer.toString('base64');
+        // Get mime type
+        const ext = filePath.split('.').pop().toLowerCase();
+        const mimeTypes = {
+            'png': 'image/png',
+            'jpg': 'image/jpeg',
+            'jpeg': 'image/jpeg',
+            'gif': 'image/gif',
+            'svg': 'image/svg+xml',
+            'webp': 'image/webp',
+            'ico': 'image/x-icon',
+            'bmp': 'image/bmp'
+        };
+        const mimeType = mimeTypes[ext] || 'image/png';
+
+        return {
+            content: [
+                {
+                    type: "text",
+                    text: JSON.stringify({
+                        type: 'image',
+                        mimeType,
+                        dataUrl: `data:${mimeType};base64,${base64}`
+                    }),
+                },
+            ],
+        };
+    }
+
+    // Read as text for non-image files
     let content = await fs.readFile(resolvePath(filePath), "utf-8");
-    
+
     // Attempt to decode if it's a JS file (for DS sources)
     if (filePath.endsWith('.js')) {
          content = await decodeDsSource(content);
@@ -42,7 +80,10 @@ export const read_file = async (args) => {
         content: [
             {
                 type: "text",
-                text: content,
+                text: JSON.stringify({
+                    type: 'text',
+                    content
+                }),
             },
         ],
     };

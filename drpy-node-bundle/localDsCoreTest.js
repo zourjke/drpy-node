@@ -1,5 +1,6 @@
 // import * as localtDsCore from './localDsCore.js';
 import * as localtDsCore from './libs/localDsCore.bundled.js';
+
 const start = performance.now();
 
 console.log(getEngine)
@@ -28,7 +29,13 @@ const f = await getEngine('央视大全[官]', {
     do: 'ds',
     proxy: 1,
     url: '',
-}, {requestHost: 'http://127.0.0.1:5757',proxyPath:'https://dh5wswx02.v.cntv.cn/asp/h5e/hls/2000/0303000a/3/default/b90af013c16e44de9e4f1f56dab91f63/1.ts'})
+}, {
+    requestHost: 'http://127.0.0.1:5757',
+    proxyPath: 'https://dh5wswx02.v.cntv.cn/asp/h5e/hls/2000/0303000a/3/default/b90af013c16e44de9e4f1f56dab91f63/1.ts'
+})
 
 const [statuCode, contentType, buffer, headers] = f;
 console.log('resutl: header:', headers, 'buffer length:', buffer.length);
+
+const g = await getEngine('360影视[官]', {do: 'ds', ac: 'list', t: '2', ext: 'eyLnsbvlnosiOiLoqIDmg4UifQ=='})
+console.log(g)

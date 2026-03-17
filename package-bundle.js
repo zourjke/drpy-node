@@ -8,6 +8,7 @@ const INCLUDE_ITEMS = [
     'libs',
     'spider',
     'jx',
+    'json',
     'localt5.js',
     'localDsCoreTest.js'
 ];
@@ -19,6 +20,11 @@ const EXTRA_FILES = [
     '央视大全[官].js',
     '设置中心.js',
     '听友[听].js',
+    '360影视[官].js',
+    'Appget[模板].js',
+    'Appmuou[模板].js',
+    'AppShark[模板].js',
+    'APP模板配置.js',
 ];
 
 // 获取脚本所在目录 (e:\gitwork\drpy-node)

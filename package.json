@@ -26,10 +26,13 @@
     "moontv": "node scripts/mjs/moontv.mjs 采集2025.json -p",
     "bundle": "cd drpy-node-bundle && npx rolldown -c",
     "test:bundle": "cd drpy-node-bundle && node localDsCoreTest.js",
-    "test-bun:bundle": "cd drpy-node-bundle && bun localDsCoreTest.js"
+    "test-bun:bundle": "cd drpy-node-bundle && bun localDsCoreTest.js",
+    "admin:dev": "cd drpy-node-admin && npm run dev",
+    "admin:build": "cd drpy-node-admin && npm run build",
+    "admin:install": "cd drpy-node-admin && npm install"
   },
   "engines": {
-    "node": ">17 <23"
+    "node": ">17 <25"
   },
   "repository": "https://github.com/hjdhnx/drpy-node.git",
   "author": "晚风拂柳颜 <434857005@qq.com>",

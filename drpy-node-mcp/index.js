@@ -12,6 +12,7 @@ import * as fsTools from "./tools/fsTools.js";
 import * as spiderTools from "./tools/spiderTools.js";
 import * as dbTools from "./tools/dbTools.js";
 import * as systemTools from "./tools/systemTools.js";
+import * as apiTools from "./tools/apiTools.js";
 
 const server = new Server(
   {
@@ -43,6 +44,9 @@ const toolHandlers = {
     validate_spider: spiderTools.validate_spider,
     check_syntax: spiderTools.check_syntax,
     
+    // API Tools
+    get_drpy_api_list: apiTools.get_drpy_api_list,
+
     // DB Tools
     sql_query: dbTools.sql_query,
     
@@ -125,6 +129,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "get_routes_info",
         description: "Get information about registered routes/controllers",
+        inputSchema: {
+            type: "object",
+            properties: {}
+        },
+      },
+      {
+        name: "get_drpy_api_list",
+        description: "Get the full list of drpy-node API interfaces with parameters and return examples",
         inputSchema: {
             type: "object",
             properties: {}
