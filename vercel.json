@@ -11,7 +11,8 @@
           "spider/**",
           "jx/**",
           "config/**",
-          "json/**"
+          "json/**",
+          "node_modules/node-sqlite3-wasm/dist/**"
         ]
       }
     }

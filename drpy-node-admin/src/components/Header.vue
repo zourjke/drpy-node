@@ -7,7 +7,7 @@ const route = useRoute()
 </script>
 
 <template>
-  <header class="fixed top-0 right-0 left-0 lg:left-64 z-30 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 h-16 flex items-center justify-between px-4 lg:px-6">
+  <header class="fixed top-0 right-0 left-0 lg:left-56 z-30 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 h-16 flex items-center justify-between px-4 lg:px-6">
     <div class="flex items-center gap-4">
       <!-- Mobile menu button -->
       <button

@@ -14,6 +14,11 @@ app.use(VueMonacoEditorPlugin, {
   paths: {
     // 使用 jsdelivr 的国内加速节点或者 unpkg
     vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.43.0/min/vs'
+  },
+  'vs/nls': {
+    availableLanguages: {
+      '*': 'zh-cn'
+    }
   }
 })
 

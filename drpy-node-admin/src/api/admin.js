@@ -113,6 +113,14 @@ export const adminApi = {
         return client.get('/api/admin/backup/config');
     },
 
+    async updateBackupConfig(paths) {
+        return client.post('/api/admin/backup/config', { paths });
+    },
+
+    async resetBackupConfig() {
+        return client.post('/api/admin/backup/config/reset');
+    },
+
     async createBackup() {
         return client.post('/api/admin/backup/create');
     },

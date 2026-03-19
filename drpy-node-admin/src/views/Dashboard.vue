@@ -53,6 +53,20 @@ const getStatusBadge = (status) => {
 
 const restarting = ref(false)
 
+const formatUptime = (seconds) => {
+  if (!seconds) return '0秒';
+  const d = Math.floor(seconds / (3600 * 24));
+  const h = Math.floor((seconds % (3600 * 24)) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  
+  let result = '';
+  if (d > 0) result += `${d}天`;
+  if (h > 0 || d > 0) result += `${h}时`;
+  result += `${m}分`;
+  
+  return result;
+}
+
 const restartService = async () => {
   if (!confirm('确定要重启 drpy-node 服务吗？这将中断所有连接。')) {
     return
@@ -115,17 +129,22 @@ const restartService = async () => {
             </span>
           </div>
         </div>
-        <div class="flex items-center gap-3">
-          <div
-            class="w-3 h-3 rounded-full animate-pulse-slow"
-            :class="systemStore.health.status === 'ok' || systemStore.health.status === 'healthy'
-              ? 'bg-green-500'
-              : 'bg-red-500'"
-          />
-          <span class="text-gray-600 dark:text-gray-400">
-            {{ systemStore.health.status === 'ok' || systemStore.health.status === 'healthy'
-              ? '服务运行正常'
-              : '服务异常' }}
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div
+              class="w-3 h-3 rounded-full animate-pulse-slow"
+              :class="systemStore.health.status === 'ok' || systemStore.health.status === 'healthy'
+                ? 'bg-green-500'
+                : 'bg-red-500'"
+            />
+            <span class="text-gray-600 dark:text-gray-400">
+              {{ systemStore.health.status === 'ok' || systemStore.health.status === 'healthy'
+                ? '服务运行正常'
+                : '服务异常' }}
+            </span>
+          </div>
+          <span v-if="systemStore.health.uptime" class="text-sm text-gray-500">
+            运行时长: {{ formatUptime(systemStore.health.uptime) }}
           </span>
         </div>
         <div class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center text-sm">
@@ -258,6 +277,20 @@ const restartService = async () => {
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
           </svg>
           <span class="text-sm font-medium">源管理</span>
+        </RouterLink>
+
+        <RouterLink to="/map-manager" class="flex flex-col items-center justify-center gap-2 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+          <svg class="w-6 h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+          </svg>
+          <span class="text-sm font-medium">站源映射</span>
+        </RouterLink>
+
+        <RouterLink to="/parses" class="flex flex-col items-center justify-center gap-2 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+          <svg class="w-6 h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+          </svg>
+          <span class="text-sm font-medium">解析管理</span>
         </RouterLink>
         
         <RouterLink to="/files" class="flex flex-col items-center justify-center gap-2 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">

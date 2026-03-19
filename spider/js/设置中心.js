@@ -129,7 +129,8 @@ var rule = {
         let setIcon = urljoin(publicUrl, './images/icon_cookie/设置.png');
         let searchIcon = urljoin(publicUrl, './images/icon_cookie/搜索.jpg');
         let chatIcon = urljoin(publicUrl, './images/icon_cookie/chat.webp');
-        let drpySIcon = urljoin(publicUrl, './images/drpys.png');
+        let drpysIcon = urljoin(publicUrl, './images/drpys.png');
+        let drpyshIcon = urljoin(publicUrl, './images/drpysh.png');
         const data = deepCopy(action_data);
         data.push({
             vod_id: JSON.stringify({
@@ -149,12 +150,23 @@ var rule = {
             vod_id: JSON.stringify({
                 actionId: 'browser',
                 type: 'browser',
+                title: 'DS仓库',
+                url: 'https://repo.tvshare.cn/',
+            }),
+            vod_name: 'DS仓库',
+            vod_pic: drpyshIcon,
+            vod_tag: 'action'
+        });
+        data.unshift({
+            vod_id: JSON.stringify({
+                actionId: 'browser',
+                type: 'browser',
                 title: '后台管理',
                 url: requestHost + '/apps/admin',
                 header: {'Authorization': 'Basic YWRtaW46ZHJweXM='},
             }),
             vod_name: '后台管理',
-            vod_pic: drpySIcon,
+            vod_pic: drpysIcon,
             vod_tag: 'action'
         });
         data.forEach(it => {

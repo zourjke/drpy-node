@@ -62,7 +62,7 @@ const themeStore = useThemeStore()
 
 @media (min-width: 1024px) {
   .main-content {
-    margin-left: 16rem;
+    margin-left: 14rem;
   }
 }
 

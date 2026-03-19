@@ -21,12 +21,26 @@ const saving = ref(false)
 const validating = ref(false)
 const validationError = ref(null)
 const hasChanges = ref(false)
+const wordWrap = ref('on') // Toggle for auto word wrap
+let editorInstance = null // Reference to monaco editor instance
+
+const handleEditorMount = (editor) => {
+  editorInstance = editor
+}
+
+const toggleWordWrap = () => {
+  wordWrap.value = wordWrap.value === 'on' ? 'off' : 'on'
+  if (editorInstance) {
+    editorInstance.updateOptions({ wordWrap: wordWrap.value })
+  }
+}
 
 const editorLanguage = computed(() => {
   const path = filePath.value.toLowerCase()
   if (path.endsWith('.js')) return 'javascript'
   if (path.endsWith('.php')) return 'php'
   if (path.endsWith('.py')) return 'python'
+  if (path.endsWith('.conf') || path.endsWith('.txt')) return 'plaintext'
   return 'javascript'
 })
 
@@ -128,7 +142,7 @@ const getTemplate = async () => {
 }
 
 const goBack = () => {
-  router.push('/sources')
+  router.back()
 }
 </script>
 
@@ -152,6 +166,16 @@ const goBack = () => {
           </div>
         </div>
         <div class="flex items-center gap-2 flex-wrap">
+          <div class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700">
+            <input 
+              type="checkbox" 
+              id="wordWrap" 
+              :checked="wordWrap === 'on'" 
+              @change="toggleWordWrap"
+              class="rounded text-primary-600 focus:ring-primary-500 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 w-4 h-4"
+            >
+            <label for="wordWrap" class="cursor-pointer select-none">自动换行</label>
+          </div>
           <button
             @click="getTemplate"
             class="btn btn-secondary text-sm"
@@ -212,11 +236,14 @@ const goBack = () => {
             automaticLayout: true,
             minimap: { enabled: false },
             fontSize: 14,
-            wordWrap: 'on',
+            wordWrap: wordWrap,
+            wordWrapColumn: 80,
+            wrappingIndent: 'same',
             scrollBeyondLastLine: false,
             tabSize: 4
           }"
           height="100%"
+          @mount="handleEditorMount"
         />
       </div>
     </div>
@@ -247,5 +274,13 @@ const goBack = () => {
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+/* Fix mobile touch scrolling for Monaco editor */
+:deep(.monaco-editor) {
+  touch-action: pan-x pan-y !important;
+}
+:deep(.monaco-scrollable-element) {
+  touch-action: pan-x pan-y !important;
 }
 </style>

@@ -207,9 +207,18 @@ const formatDisplayValue = (value) => {
             <input
               v-model="searchQuery"
               type="text"
-              class="input pl-10 w-full"
+              class="input pl-10 pr-8 w-full"
               placeholder="搜索变量名或描述..."
             >
+            <button 
+              v-if="searchQuery" 
+              @click="searchQuery = ''"
+              class="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
           <button
             @click="configStore.fetchConfig()"

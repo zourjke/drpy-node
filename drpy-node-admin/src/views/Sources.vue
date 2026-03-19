@@ -107,15 +107,24 @@ const editSource = (source) => {
 
       <!-- Filters -->
       <div class="card p-4">
-        <div class="flex flex-col sm:flex-row gap-4">
+        <div class="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
           <!-- Search -->
-          <div class="flex-1">
+          <div class="relative flex-1 w-full">
             <input
               v-model="searchQuery"
               type="text"
               placeholder="搜索源文件..."
-              class="input"
+              class="input w-full pr-8"
             />
+            <button 
+              v-if="searchQuery" 
+              @click="searchQuery = ''"
+              class="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
 
           <!-- Type filter -->

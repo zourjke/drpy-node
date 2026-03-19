@@ -72,6 +72,49 @@ export const getBackupConfig = async (request, reply) => {
     return reply.send({ success: true, paths, lastBackupAt, lastRestoreAt });
 };
 
+export const updateBackupConfig = async (request, reply) => {
+    try {
+        const { paths } = request.body;
+        if (!Array.isArray(paths)) {
+            return reply.code(400).send({ success: false, message: 'paths must be an array' });
+        }
+
+        const backupDir = getBackupRootDir();
+        await fs.ensureDir(backupDir);
+
+        const info = loadBackinfo(backupDir) || {};
+        const backinfoData = {
+            ...info,
+            paths
+        };
+        saveBackinfo(backupDir, backinfoData);
+
+        return reply.send({ success: true, message: 'Backup configuration updated successfully', paths });
+    } catch (error) {
+        request.log.error(`Update backup config failed: ${error.message}`);
+        return reply.code(500).send({ success: false, message: 'Update backup config failed: ' + error.message });
+    }
+};
+
+export const resetBackupConfig = async (request, reply) => {
+    try {
+        const backupDir = getBackupRootDir();
+        await fs.ensureDir(backupDir);
+
+        const info = loadBackinfo(backupDir) || {};
+        const backinfoData = {
+            ...info,
+            paths: BACKUP_PATHS
+        };
+        saveBackinfo(backupDir, backinfoData);
+
+        return reply.send({ success: true, message: 'Backup configuration reset to defaults', paths: BACKUP_PATHS });
+    } catch (error) {
+        request.log.error(`Reset backup config failed: ${error.message}`);
+        return reply.code(500).send({ success: false, message: 'Reset backup config failed: ' + error.message });
+    }
+};
+
 export const createBackup = async (request, reply) => {
     if (process.env.VERCEL) {
         return reply.code(403).send({ success: false, message: 'Vercel environment does not support backup' });
