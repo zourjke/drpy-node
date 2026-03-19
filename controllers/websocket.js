@@ -10,6 +10,15 @@ import {toBeijingTime} from "../utils/datetime-format.js";
 // WebSocket 客户端管理
 const wsClients = new Set();
 
+// 导出客户端管理函数
+export function addClient(client) {
+    wsClients.add(client);
+}
+
+export function removeClient(client) {
+    wsClients.delete(client);
+}
+
 // 需要拦截的console方法列表
 const CONSOLE_METHODS = [
     'log', 'error', 'warn', 'info', 'debug',

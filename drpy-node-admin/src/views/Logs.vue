@@ -14,6 +14,18 @@ let reconnectAttempts = 0
 const maxReconnectAttempts = 5
 
 const getWebSocketUrl = () => {
+  // 检查是否有自定义的后端地址配置
+  const customBackendUrl = import.meta.env.VITE_BACKEND_URL || window.BACKEND_URL
+
+  if (customBackendUrl) {
+    const protocol = customBackendUrl.startsWith('https') ? 'wss:' : 'ws:'
+    const host = customBackendUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')
+    return `${protocol}//${host}/api/admin/logs/stream`
+  }
+
+  // 默认：使用当前主机的 WebSocket 端点
+  // 开发环境：Vite 会代理到后端
+  // 生产环境：需要部署在同一个主机下或配置反向代理
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const host = window.location.host
   return `${protocol}//${host}/ws`
@@ -110,15 +122,29 @@ const disconnectWebSocket = () => {
     reconnectTimer = null
   }
   if (ws) {
-    ws.close()
+    // 移除所有事件监听器
+    ws.onopen = null
+    ws.onmessage = null
+    ws.onerror = null
+    ws.onclose = null
+
+    // 关闭连接
+    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+      ws.close(1000, 'Component unmounted')
+    }
     ws = null
   }
   wsConnected.value = false
+  wsError.value = null
 }
 
 const addLog = (message, level = 'info') => {
   const timestamp = new Date().toLocaleTimeString()
-  logs.value.push({ timestamp, message, level })
+
+  // 确保 message 是字符串
+  const safeMessage = typeof message === 'string' ? message : String(message)
+
+  logs.value.push({ timestamp, message: safeMessage, level })
 
   // 限制日志数量
   if (logs.value.length > maxLogs.value) {
@@ -184,20 +210,43 @@ const getLogStyle = (level) => {
   }
 }
 
+let heartbeatInterval = null
+
 onMounted(() => {
   connectWebSocket()
 
   // 定期发送心跳
-  const heartbeatInterval = setInterval(() => {
+  heartbeatInterval = setInterval(() => {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'heartbeat' }))
     }
   }, 30000)
+})
 
-  onUnmounted(() => {
+onUnmounted(() => {
+  // 清理心跳定时器
+  if (heartbeatInterval) {
     clearInterval(heartbeatInterval)
-    disconnectWebSocket()
-  })
+    heartbeatInterval = null
+  }
+
+  // 断开 WebSocket 连接
+  disconnectWebSocket()
+
+  // 清理重连定时器
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+
+  // 重置状态
+  wsConnected.value = false
+  wsError.value = null
+  logs.value = []
+  reconnectAttempts = 0
+
+  // 清理 DOM 引用
+  logContainer.value = null
 })
 
 // Watch for auto scroll changes
@@ -209,10 +258,9 @@ watch(autoScroll, () => {
 </script>
 
 <template>
-  <!-- 使用相对定位和计算高度，避免路由切换时覆盖其他页面 -->
-  <div class="h-full flex flex-col">
-    <!-- Header - 固定在顶部 -->
-    <div class="flex-shrink-0 pb-4">
+  <div class="logs-page">
+    <!-- Header - 固定在顶部，不会被滚动 -->
+    <div class="logs-header">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 class="text-xl font-semibold">日志查看</h2>
@@ -252,70 +300,126 @@ watch(autoScroll, () => {
     </div>
 
     <!-- Log viewer 卡片 -->
-    <div class="flex-1 min-h-0 card flex flex-col overflow-hidden">
+    <div class="logs-viewer card">
       <!-- Toolbar -->
-        <div class="flex-shrink-0 px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-          <div class="flex items-center gap-4">
-            <label class="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                v-model="autoScroll"
-                class="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
-              />
-              自动滚动到底部
-            </label>
-            <span class="text-sm text-gray-500 dark:text-gray-400">
-              {{ logs.length }} 条日志
-            </span>
-          </div>
-          <div class="flex gap-2">
-            <button @click="scrollToTop" class="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-600" title="滚动到顶部">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18" />
-              </svg>
-            </button>
-            <button @click="scrollToBottom" class="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-600" title="滚动到底部">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-              </svg>
-            </button>
-          </div>
+      <div class="logs-toolbar">
+        <div class="flex items-center gap-4">
+          <label class="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              v-model="autoScroll"
+              class="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
+            />
+            自动滚动到底部
+          </label>
+          <span class="text-sm text-gray-500 dark:text-gray-400">
+            {{ logs.length }} 条日志
+          </span>
         </div>
+        <div class="flex gap-2">
+          <button @click="scrollToTop" class="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-600" title="滚动到顶部">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+            </svg>
+          </button>
+          <button @click="scrollToBottom" class="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-600" title="滚动到底部">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
+          </button>
+        </div>
+      </div>
 
-        <!-- Log content - 可滚动区域 -->
-        <div
-          ref="logContainer"
-          class="flex-1 overflow-y-auto overflow-x-hidden p-4 bg-gray-900 dark:bg-black font-mono text-sm leading-relaxed"
-        >
-          <div v-if="logs.length === 0" class="text-center py-12 text-gray-500">
-            <div v-if="!wsConnected">
+      <!-- Log content - 可滚动区域 -->
+      <div ref="logContainer" class="logs-content">
+        <template v-if="logs.length === 0">
+          <div class="text-center py-12 text-gray-500">
+            <template v-if="!wsConnected">
               <svg class="w-16 h-16 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
               <p>点击"连接"按钮开始接收实时日志</p>
-            </div>
-            <div v-else>
+            </template>
+            <template v-else>
               等待日志...
-            </div>
+            </template>
           </div>
+        </template>
 
-          <div v-else>
-            <div
-              v-for="(log, index) in logs"
-              :key="index"
-              class="flex gap-3 hover:bg-gray-800/50 rounded px-2 py-0.5"
-            >
-              <span class="text-gray-500 flex-shrink-0 select-none">{{ log.timestamp }}</span>
-              <span class="flex-1 break-words" :class="getLogStyle(log.level)">{{ log.message }}</span>
-            </div>
+        <template v-else>
+          <div
+            v-for="(log, index) in logs"
+            :key="index"
+            class="flex gap-3 hover:bg-gray-800/50 rounded px-2 py-0.5"
+          >
+            <span class="text-gray-500 flex-shrink-0 select-none">{{ log.timestamp }}</span>
+            <span class="flex-1 break-words" :class="getLogStyle(log.level)">{{ log.message }}</span>
           </div>
-        </div>
+        </template>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+/* 页面容器 - 使用固定高度确保布局正确 */
+.logs-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 8rem - 4rem);
+  min-height: 500px;
+}
+
+/* 头部区域 - 固定不滚动 */
+.logs-header {
+  flex-shrink: 0;
+  padding-bottom: 1rem;
+}
+
+/* 日志查看器卡片 - 占据剩余空间 */
+.logs-viewer {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 工具栏 - 固定在卡片顶部 */
+.logs-toolbar {
+  flex-shrink: 0;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgb(229 231 235);
+  border-bottom-color: rgb(229 231 235);
+}
+
+.dark .logs-toolbar {
+  border-bottom-color: rgb(55 65 81);
+}
+
+.logs-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* 日志内容区域 - 可滚动 */
+.logs-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 1rem;
+  background-color: rgb(17 24 39);
+  color: rgb(209 213 219);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.875rem;
+  line-height: 1.625;
+}
+
+.dark .logs-content {
+  background-color: rgb(0 0 0);
+}
+
 input[type="checkbox"] {
   accent-color: rgb(2 132 199);
 }

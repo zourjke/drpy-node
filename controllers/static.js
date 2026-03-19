@@ -46,7 +46,7 @@ export default (fastify, options, done) => {
 
     fastify.register(addSPARoutes, {
         appsDir: options.appsDir,
-        spaApps: ['drplayer'] // 只有drplayer需要SPA路由支持
+        spaApps: ['drplayer', 'admin'] // 支持SPA路由的应用
     });
 
     // 注册JSON配置文件服务 - 用于存放各种JSON格式的配置文件

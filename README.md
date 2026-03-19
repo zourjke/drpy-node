@@ -35,6 +35,7 @@ nodejs作为服务端的drpy实现。全面升级异步写法
 
 ### 插件应用列表
 
+* [Admin 管理面板](/apps/admin)
 * [DrPlayer](/apps/drplayer)
 * [Websocket实时日志](/apps/websocket)
 * [cookie管理插件](/apps/cookie-butler/index.html)
@@ -69,6 +70,10 @@ nodejs作为服务端的drpy实现。全面升级异步写法
 * [皮卡丘](https://github.com/ingriddaleusag-dotcom/PeekPiliRelease)
 
 ## 更新记录
+
+### 20260319
+
+更新至V1.3.31
 
 ### 20260317
 

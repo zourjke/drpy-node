@@ -1,26 +1,173 @@
 /**
- * Admin Controller - 后台管理界面控制器
- * 提供 admin 面板所需的 API 接口和静态文件服务
+ * Admin Controller - 后台管理主控制器
+ * 重构版：移除 MCP 依赖，直接实现业务逻辑
  */
 
 import path from 'path';
-import fs from 'fs';
-import fastifyStatic from '@fastify/static';
+import fs from '../utils/fsWrapper.js';
+import { validateBasicAuth } from '../utils/api_validate.js';
 
-// 配置相关
+// 导入子控制器
+import * as systemController from './admin/systemController.js';
+import * as logsController from './admin/logsController.js';
+import * as sourcesController from './admin/sourcesController.js';
+import * as filesController from './admin/filesController.js';
+import * as dbController from './admin/dbController.js';
+import * as subController from './admin/subController.js';
+import * as backupController from './admin/backupController.js';
+
+// 配置常量
 const CONFIG_PATH = path.join(process.cwd(), 'config/env.json');
 
-// 获取配置
+const FULL_ENV_TEMPLATE = {
+    "ali_token": "",
+    "ali_refresh_token": "",
+    "quark_cookie": "",
+    "quark_token_cookie": "",
+    "uc_cookie": "",
+    "uc_token_cookie": "",
+    "baidu_cookie": "",
+    "xun_username": "",
+    "xun_password": "",
+    "cloud_account": "",
+    "cloud_password": "",
+    "cloud_cookie": "",
+    "yun_account": "",
+    "yun_cookie": "",
+    "pan_passport": "",
+    "pan_password": "",
+    "pan_auth": "",
+    "pikpak_token": "",
+    "now_ai": "1",
+    "spark_ai_authKey": "",
+    "deepseek_apiKey": "",
+    "kimi_apiKey": "",
+    "sparkBotObject": {},
+    "thread": "6",
+    "api_pwd": "",
+    "hide_adult": "1",
+    "enable_old_config": "0",
+    "show_curl": "0",
+    "show_req": "0",
+    "enable_rule_name": "0",
+    "enable_dr2": "1",
+    "enable_py": "1",
+    "enable_php": "1",
+    "enable_cat": "1",
+    "enable_self_jx": "0",
+    "enable_system_proxy": "1",
+    "play_proxy_mode": "1",
+    "play_local_proxy_type": "1",
+    "PROXY_AUTH": "drpys",
+    "enable_doh": "0",
+    "allow_forward": "0",
+    "allow_ftp_cache_clear": "0",
+    "allow_webdav_cache_clear": "0",
+    "link_url": "",
+    "enable_link_data": "0",
+    "enable_link_push": "0",
+    "enable_link_jar": "0",
+    "cat_sub_code": "all",
+    "must_sub_code": "0",
+    "bili_cookie": "",
+    "mg_hz": "4"
+};
+
+// 导出路由配置
+export default async function adminController(fastify, options, done) {
+    // 注册 Basic Auth 验证钩子
+    fastify.addHook('preHandler', async (request, reply) => {
+        // 只对 /api/admin/* 接口进行验证
+        if (request.url.startsWith('/api/admin')) {
+            await new Promise((resolve, reject) => {
+                validateBasicAuth(request, reply, (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                });
+            });
+        }
+    });
+
+    // ==================== 系统管理 API ====================
+    fastify.get('/api/admin/health', systemController.getHealth);
+    fastify.post('/api/admin/restart', systemController.restartService);
+
+    // ==================== 日志 API ====================
+    fastify.get('/api/admin/logs', logsController.getLogs);
+
+    // ==================== 配置管理 API ====================
+    fastify.get('/api/admin/config', getConfig);
+    fastify.post('/api/admin/config', updateConfig);
+    fastify.get('/api/admin/env', getEnv);
+    fastify.get('/api/admin/version', getVersion);
+
+    // ==================== 源管理 API ====================
+    fastify.get('/api/admin/sources', sourcesController.listSources);
+    fastify.post('/api/admin/sources/validate', sourcesController.validateSpider);
+    fastify.post('/api/admin/sources/syntax', sourcesController.checkSyntax);
+    fastify.get('/api/admin/sources/template', sourcesController.getTemplate);
+    fastify.get('/api/admin/sources/libs', sourcesController.getLibsInfo);
+
+    // ==================== 文件管理 API ====================
+    fastify.get('/api/admin/files/list', filesController.listDirectory);
+    fastify.get('/api/admin/files/read', filesController.readFile);
+    fastify.post('/api/admin/files/write', filesController.writeFile);
+    fastify.delete('/api/admin/files/delete', filesController.deleteFile);
+
+    // ==================== 数据库 API ====================
+    fastify.post('/api/admin/db/query', dbController.executeQuery);
+    fastify.get('/api/admin/db/tables', dbController.getTables);
+    fastify.get('/api/admin/db/tables/:table/schema', dbController.getTableSchema);
+
+    // ==================== Sub文件管理 API ====================
+    fastify.get('/api/admin/sub/files', subController.getSubFiles);
+    fastify.get('/api/admin/sub/file', subController.getSubFileContent);
+    fastify.post('/api/admin/sub/file', subController.saveSubFileContent);
+
+    // ==================== 备份恢复 API ====================
+    fastify.get('/api/admin/backup/config', backupController.getBackupConfig);
+    fastify.post('/api/admin/backup/create', backupController.createBackup);
+    fastify.post('/api/admin/backup/restore', backupController.restoreBackup);
+
+    // ==================== 路由信息 API ====================
+    fastify.get('/api/admin/routes', getRoutesInfo);
+    fastify.get('/api/admin/docs', systemController.getApiDocs);
+
+    // MCP 兼容层
+    const ENABLE_MCP_COMPAT = process.env.ENABLE_MCP_COMPAT !== 'false';
+    if (ENABLE_MCP_COMPAT) {
+        fastify.post('/admin/mcp', async (req, reply) => {
+            const { name, arguments: args } = req.body;
+            try {
+                // 仅作最低限度的兼容，或者提示用户升级
+                return reply.code(400).send({ error: 'MCP API 已弃用，请更新 drpy-node-admin 到最新版本' });
+            } catch (e) {
+                return reply.code(500).send({ error: e.message });
+            }
+        });
+    }
+
+    done();
+}
+
+// ==================== 辅助函数 ====================
+
 async function getConfig(req, reply) {
     try {
         const { key } = req.query;
 
-        if (!fs.existsSync(CONFIG_PATH)) {
-            return reply.send({});
+        let config = {};
+        if (await fs.pathExists(CONFIG_PATH)) {
+            const configContent = await fs.readFile(CONFIG_PATH, 'utf-8');
+            try {
+                config = JSON.parse(configContent);
+            } catch (e) {
+                // ignore parse error
+            }
         }
-
-        const configContent = fs.readFileSync(CONFIG_PATH, 'utf-8');
-        const config = JSON.parse(configContent);
+        
+        // Merge with template to ensure all keys exist
+        config = { ...FULL_ENV_TEMPLATE, ...config };
 
         if (key) {
             const keys = key.split('.');
@@ -37,115 +184,106 @@ async function getConfig(req, reply) {
     }
 }
 
-// 更新配置
 async function updateConfig(req, reply) {
     try {
-        const { action, key, value } = req.body;
+        const { key, value } = req.body;
 
-        if (action === 'set') {
-            const systemTools = await import('../drpy-node-mcp/tools/systemTools.js');
-            const result = await systemTools.manage_config({ action, key, value: String(value) });
-            if (result.isError) {
-                return reply.code(400).send({ error: result.content[0].text });
+        if (!key) {
+            return reply.code(400).send({ error: 'Key is required' });
+        }
+
+        if (!await fs.pathExists(CONFIG_PATH)) {
+            return reply.code(404).send({ error: 'Config file not found' });
+        }
+
+        const configContent = await fs.readFile(CONFIG_PATH, 'utf-8');
+        let config = JSON.parse(configContent);
+
+        // 设置嵌套值
+        const keys = key.split('.');
+        let target = config;
+        for (let i = 0; i < keys.length - 1; i++) {
+            if (!target[keys[i]]) {
+                target[keys[i]] = {};
             }
-            return reply.send({ success: true, message: result.content[0].text });
+            target = target[keys[i]];
         }
 
-        reply.code(400).send({ error: 'Invalid action' });
-    } catch (e) {
-        reply.code(500).send({ error: e.message });
-    }
-}
-
-// MCP 工具调用接口
-async function callMCP(req, reply) {
-    try {
-        const { name, arguments: args } = req.body;
-
-        let handler;
-        switch (name) {
-            case 'read_logs':
-                const systemTools = await import('../drpy-node-mcp/tools/systemTools.js');
-                handler = systemTools.read_logs;
-                break;
-            case 'restart_service':
-                const systemTools2 = await import('../drpy-node-mcp/tools/systemTools.js');
-                handler = systemTools2.restart_service;
-                break;
-            case 'list_sources':
-                const spiderTools = await import('../drpy-node-mcp/tools/spiderTools.js');
-                handler = spiderTools.list_sources;
-                break;
-            case 'get_routes_info':
-                const spiderTools2 = await import('../drpy-node-mcp/tools/spiderTools.js');
-                handler = spiderTools2.get_routes_info;
-                break;
-            case 'get_drpy_api_list':
-                const apiTools = await import('../drpy-node-mcp/tools/apiTools.js');
-                handler = apiTools.get_drpy_api_list;
-                break;
-            case 'validate_spider':
-            case 'check_syntax':
-            case 'get_spider_template':
-            case 'debug_spider_rule':
-                const spiderTools3 = await import('../drpy-node-mcp/tools/spiderTools.js');
-                handler = spiderTools3[name];
-                break;
-            case 'sql_query':
-                const dbTools = await import('../drpy-node-mcp/tools/dbTools.js');
-                handler = dbTools.sql_query;
-                break;
-            case 'list_directory':
-            case 'read_file':
-                const fsTools = await import('../drpy-node-mcp/tools/fsTools.js');
-                handler = fsTools[name];
-                break;
-            default:
-                return reply.code(404).send({ error: 'Tool not found' });
-        }
-
-        if (!handler) {
-            return reply.code(404).send({ error: 'Tool not found' });
-        }
-
-        const result = await handler(args || {});
-
-        if (result.isError) {
-            return reply.code(400).send({ error: result.content[0].text });
-        }
-
-        const content = result.content[0].text;
+        // 尝试解析为 JSON
+        let parsedValue = value;
         try {
-            return reply.send(JSON.parse(content));
+            parsedValue = JSON.parse(value);
         } catch {
-            return reply.send(content);
+            // 保持字符串
         }
+
+        target[keys[keys.length - 1]] = parsedValue;
+
+        // 写回文件
+        await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2));
+
+        return reply.send({
+            success: true,
+            message: `配置项 ${key} 已更新`
+        });
     } catch (e) {
         reply.code(500).send({ error: e.message });
     }
 }
 
-// 导出路由配置 - 使用标准控制器模式
-export default (fastify, options, done) => {
-    // Admin 面板静态文件目录
-    const adminDistPath = path.join(process.cwd(), 'drpy-node-admin/dist');
+async function getEnv(req, reply) {
+    try {
+        const envData = {};
 
-    if (fs.existsSync(adminDistPath)) {
-        fastify.log.info('Serving admin panel from ' + adminDistPath);
+        // 从 process.env 读取关键配置
+        const keys = [
+            'PORT', 'NODE_ENV', 'MAX_TEXT_SIZE', 'MAX_IMAGE_SIZE',
+            'QUARK_COOKIE', 'ALI_TOKEN', 'bili_cookie'
+        ];
 
-        // 注册静态文件服务（在 API 路由之前注册，避免冲突）
-        fastify.register(fastifyStatic, {
-            root: adminDistPath,
-            prefix: '/admin/',
-            decorateReply: false,
-            index: ['index.html']
-        });
+        for (const key of keys) {
+            if (process.env[key]) {
+                envData[key] = process.env[key];
+            }
+        }
+
+        return reply.send(envData);
+    } catch (e) {
+        reply.code(500).send({ error: e.message });
     }
+}
 
-    // API 路由（必须在静态文件服务之后注册，避免被静态文件拦截）
-    fastify.get('/admin/config', getConfig);
-    fastify.post('/admin/config', updateConfig);
-    fastify.post('/admin/mcp', callMCP);
+async function getVersion(req, reply) {
+    try {
+        const packageJson = await fs.readJson(path.join(process.cwd(), 'package.json'));
+        return reply.send({ version: packageJson.version });
+    } catch (e) {
+        reply.code(500).send({ error: e.message });
+    }
+}
 
-    done();
+async function getRoutesInfo(req, reply) {
+    try {
+        const indexControllerPath = path.join(process.cwd(), 'controllers/index.js');
+
+        if (!await fs.pathExists(indexControllerPath)) {
+            return reply.send({
+                file: 'controllers/index.js',
+                registered_controllers: []
+            });
+        }
+
+        const content = await fs.readFile(indexControllerPath, 'utf-8');
+        const lines = content.split('\n');
+        const registered = lines
+            .filter(l => l.trim().startsWith('fastify.register('))
+            .map(l => l.trim());
+
+        return reply.send({
+            file: 'controllers/index.js',
+            registered_controllers: registered
+        });
+    } catch (e) {
+        reply.code(500).send({ error: e.message });
+    }
 }

@@ -13,7 +13,7 @@ async function addSPARoutes(fastify, options) {
     for (const appName of spaApps) {
         // 1. 处理根路径重定向
         fastify.get(`/apps/${appName}`, async (request, reply) => {
-            return reply.redirect(301, `/apps/${appName}/`);
+            return reply.redirect(`/apps/${appName}/`, 301);
         });
 
         // 2. 处理应用根路径
@@ -35,15 +35,16 @@ async function addSPARoutes(fastify, options) {
     // 3. 设置404处理器来处理SPA路由回退
     fastify.setNotFoundHandler(async (request, reply) => {
         const url = request.url;
+        const pathname = url.split('?')[0];
 
         // 检查是否是SPA应用的路由请求
         for (const appName of spaApps) {
             const appPrefix = `/apps/${appName}/`;
 
-            if (url.startsWith(appPrefix)) {
+            if (pathname.startsWith(appPrefix)) {
                 // 检查是否是静态资源请求（有文件扩展名）
-                const urlPath = url.replace(appPrefix, '');
-                const hasExtension = /\.[a-zA-Z0-9]+(\?.*)?$/.test(urlPath);
+                const urlPath = pathname.replace(appPrefix, '');
+                const hasExtension = /\.[a-zA-Z0-9]+$/.test(urlPath);
 
                 if (!hasExtension) {
                     // 没有扩展名，可能是Vue路由，返回index.html

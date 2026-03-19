@@ -1,12 +1,11 @@
 /**
  * DNS over HTTPS (DOH) Utility Module
  *
- * Uses 'dns-over-http-resolver' package for robust DOH resolution.
+ * Uses direct HTTP requests for robust DOH resolution.
  * Reads configuration from config/player.json.
  * Automatically detects system proxy (Env vars or Windows Registry) to bypass local DNS pollution.
  */
 
-import DnsOverHttpResolver from 'dns-over-http-resolver';
 import axios from 'axios';
 import https from 'https';
 import fs from 'fs';
@@ -20,21 +19,20 @@ import {ENV} from './env.js'; // Import ENV utility
 const execAsync = util.promisify(exec);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// DOH Configuration and Resolver Lazy Init
+// DOH Configuration
 let dohServers = null;
-let resolver = null;
 const configPath = path.resolve(__dirname, '../config/player.json');
 
-// Initialize Resolver Lazy
-function getResolver() {
+// Initialize Servers Lazy
+function getDohServers() {
     // Check if DOH is enabled via ENV (default: 0/false)
     const enableDoh = ENV.get('enable_doh', '0') === '1' || ENV.get('enable_doh') === 'true';
     if (!enableDoh) {
         // console.log('[DOH] DOH is disabled via ENV.');
-        return null;
+        return [];
     }
 
-    if (resolver) return resolver;
+    if (dohServers) return dohServers;
     try {
         // Load config if not loaded
         if (!dohServers) {
@@ -50,20 +48,11 @@ function getResolver() {
                 console.error('[DOH] Failed to load DOH config:', e.message);
             }
         }
-
-        resolver = new DnsOverHttpResolver({
-            maxCache: 1000,
-            request: customRequest
-        });
-
-        if (dohServers && dohServers.length > 0) {
-            resolver.setServers(dohServers);
-        }
     } catch (e) {
         console.error('[DOH] Init failed:', e.message);
-        return null;
+        return [];
     }
-    return resolver;
+    return dohServers || [];
 }
 
 // Proxy Detection Logic
@@ -202,14 +191,13 @@ export function getSystemProxy() {
 }
 
 // Custom request function using axios
-const customRequest = async (resource, signal) => {
+const customRequest = async (resource) => {
     try {
         const proxy = await getSystemProxy();
         const config = {
             headers: {
                 'Accept': 'application/dns-json'
             },
-            signal: signal,
             timeout: 5000
         };
 
@@ -227,10 +215,6 @@ const customRequest = async (resource, signal) => {
     }
 };
 
-// Initialize Resolver - REMOVED top-level init
-// const resolver = new DnsOverHttpResolver({ ... });
-// if (dohServers.length > 0) { resolver.setServers(dohServers); }
-
 /**
  * Resolve domain using DOH
  * @param {string} domain
@@ -243,12 +227,29 @@ export async function resolveDoh(domain) {
     if (domain === 'localhost' || domain === '127.0.0.1') return domain;
 
     try {
-        const resolver = getResolver();
-        if (!resolver) return null;
+        const servers = getDohServers();
+        if (!servers || servers.length === 0) return null;
 
-        const ips = await resolver.resolve(domain, 'A');
-        if (ips && ips.length > 0) {
-            return ips[0];
+        for (const server of servers) {
+            try {
+                // Construct URL
+                const url = new URL(server);
+                url.searchParams.set('name', domain);
+                url.searchParams.set('type', 'A');
+                
+                const data = await customRequest(url.toString());
+                
+                // Parse JSON response
+                // Format: https://developers.google.com/speed/public-dns/docs/doh/json
+                if (data && data.Status === 0 && data.Answer) {
+                    for (const ans of data.Answer) {
+                        if (ans.type === 1) return ans.data; // Type 1 is A record
+                    }
+                }
+            } catch (e) {
+                // Try next server
+                continue;
+            }
         }
     } catch (e) {
         // console.error(`[DOH] Failed to resolve ${domain}:`, e.message);

@@ -2,6 +2,9 @@
 import { ref, computed, onMounted } from 'vue'
 import { systemApi } from '../api/system'
 
+// Page layout refs for sticky header
+const pageContainer = ref(null)
+
 const apiList = ref([])
 const loading = ref(false)
 const expandedCategory = ref(null)
@@ -59,26 +62,31 @@ const getMethodColor = (method) => {
 </script>
 
 <template>
-  <div class="space-y-6">
-    <!-- Header -->
-    <div>
-      <h2 class="text-xl font-semibold">API 文档</h2>
-      <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-        drpy-node 可用的 API 接口文档
-      </p>
+  <div class="apidocs-page">
+    <!-- Sticky Header Section -->
+    <div class="apidocs-header">
+      <!-- Header -->
+      <div>
+        <h2 class="text-xl font-semibold">API 文档</h2>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          drpy-node 可用的 API 接口文档
+        </p>
+      </div>
+
+      <!-- Search -->
+      <div class="card p-4">
+        <input
+          v-model="searchQuery"
+          type="text"
+          placeholder="搜索 API 端点..."
+          class="input"
+        />
+      </div>
     </div>
 
-    <!-- Search -->
-    <div class="card p-4">
-      <input
-        v-model="searchQuery"
-        type="text"
-        placeholder="搜索 API 端点..."
-        class="input"
-      />
-    </div>
-
-    <!-- Loading -->
+    <!-- Scrollable Content -->
+    <div class="apidocs-content">
+      <!-- Loading -->
     <div v-if="loading" class="flex justify-center py-12">
       <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
     </div>
@@ -166,5 +174,26 @@ const getMethodColor = (method) => {
         </div>
       </div>
     </div>
+    </div>
   </div>
 </template>
+
+<style scoped>
+.apidocs-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 8rem - 4rem);
+  min-height: 500px;
+}
+
+.apidocs-header {
+  flex-shrink: 0;
+  padding-bottom: 1rem;
+}
+
+.apidocs-content {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+</style>

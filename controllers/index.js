@@ -24,7 +24,7 @@ import m3u8ProxyController from './m3u8-proxy.js';
 import unifiedProxyController from './unified-proxy.js';
 import githubController from './github.js';
 import websocketServerController from "./websocketServer.js";
-// import adminController from './admin.js';
+import adminController from './admin.js';
 
 export const registerRoutes = (fastify, options) => {
     fastify.register(formBody);
@@ -53,7 +53,7 @@ export const registerRoutes = (fastify, options) => {
     fastify.register(m3u8ProxyController, options);
     fastify.register(unifiedProxyController, options);
     fastify.register(githubController, options);
-    // fastify.register(adminController, options);
+    fastify.register(adminController, options);
 };
 
 export const registerWsRoutes = (wsApp, options) => {

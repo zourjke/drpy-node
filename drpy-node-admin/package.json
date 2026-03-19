@@ -5,13 +5,15 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:apps": "vite build --mode production.apps",
     "preview": "vite preview"
   },
   "dependencies": {
-    "vue": "^3.5.13",
-    "vue-router": "^4.5.0",
+    "@guolao/vue-monaco-editor": "^1.6.0",
+    "axios": "^1.7.9",
     "pinia": "^2.2.8",
-    "axios": "^1.7.9"
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.2.1",

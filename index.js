@@ -76,7 +76,7 @@ fastify.addHook('onClose', async () => {
 
 // 给静态目录插件中心挂载basic验证
 fastify.addHook('preHandler', (req, reply, done) => {
-    if (req.raw.url.startsWith('/apps/')) {
+    if (req.raw.url.startsWith('/apps/') || req.raw.url.startsWith('/api/admin/')) {
         if (req.raw.url.includes('clipboard-pusher/index.html')) {
             validateBasicAuth(req, reply, async () => {
                 validatHtml(req, reply, rootDir).then(() => done());

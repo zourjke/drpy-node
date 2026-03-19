@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const apiClient = axios.create({
-  baseURL: '/api-proxy',
+  baseURL: '',
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json'
@@ -21,10 +21,14 @@ apiClient.interceptors.request.use(
 
 // Response interceptor
 apiClient.interceptors.response.use(
-  (response) => response.data,
+  (response) => {
+    // 打印响应以便调试
+    // console.log('API Response:', response.data)
+    return response.data
+  },
   (error) => {
-    const message = error.response?.data?.message || error.message || '请求失败'
-    console.error('API Error:', message)
+    const message = error.response?.data?.message || error.response?.data?.error || error.message || '请求失败'
+    console.error('API Error:', message, error.response?.data)
     return Promise.reject(new Error(message))
   }
 )

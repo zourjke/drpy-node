@@ -33,7 +33,7 @@ export const read_file = async (args) => {
     }
 
     // Check if it's an image file
-    const imageExts = ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.bmp'];
+    const imageExts = ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.bmp', '.tiff', '.tif'];
     const isImage = imageExts.some(ext => filePath.toLowerCase().endsWith(ext));
 
     if (isImage) {
@@ -50,7 +50,9 @@ export const read_file = async (args) => {
             'svg': 'image/svg+xml',
             'webp': 'image/webp',
             'ico': 'image/x-icon',
-            'bmp': 'image/bmp'
+            'bmp': 'image/bmp',
+            'tiff': 'image/tiff',
+            'tif': 'image/tiff'
         };
         const mimeType = mimeTypes[ext] || 'image/png';
 

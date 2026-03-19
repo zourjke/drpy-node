@@ -6,7 +6,7 @@
 import '../../libs_drpy/jsencrypt.js'
 import {ENV} from "../env.js";
 import axios from "axios";
-import qs from "qs"; // 添加缺失的qs模块导入
+import qs from "qs";
 
 /**
  * 百度网盘驱动类
@@ -18,7 +18,7 @@ class BaiduDrive {
      */
     constructor() {
         // 百度网盘分享链接正则表达式
-        this.regex = /https:\/\/pan\.baidu\.com\/s\/(.*)\?.*?pwd=([^&]+)/;//https://pan.baidu.com/s/1kbM0KWLDpeS8I49tmwS6lQ?pwd=74j5
+        this.regex = /https:\/\/pan\.baidu\.com\/s\/(.*)\?.*?pwd=([^&]+)/;
         // 支持的视频质量类型
         this.type = ["M3U8_AUTO_4K", "M3U8_AUTO_2K", "M3U8_AUTO_1080", "M3U8_AUTO_720", "M3U8_AUTO_480"];
         // 请求头配置
@@ -47,6 +47,23 @@ class BaiduDrive {
         this.view_mode = 1;
         // 渠道标识
         this.channel = 'chunlei';
+    }
+
+    /**
+     * 格式化文件大小
+     * @param {number} bytes - 文件字节数
+     * @returns {string} 格式化后的大小字符串
+     */
+    formatFileSize(bytes) {
+        if (!bytes || bytes === 0) return '0 B';
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        let i = 0;
+        let size = bytes;
+        while (size >= 1024 && i < units.length - 1) {
+            size /= 1024;
+            i++;
+        }
+        return size.toFixed(2) + ' ' + units[i];
     }
 
     /**
@@ -169,12 +186,24 @@ class BaiduDrive {
                 if (item.category === '1' || item.category === 1) {
                     // 确保所有情况下都提取文件名
                     const fileName = item.server_filename || item.path.split('/').pop();
+
+                    // 提取缩略图
+                    let thumbnail = '';
+                    if (item.thumbs) {
+                        thumbnail = item.thumbs.url || item.thumbs.icon || '';
+                    } else if (item.icon) {
+                        thumbnail = item.icon;
+                    }
+
                     videos.push({
-                        name: fileName, // 只使用文件名
-                        path: item.path.replaceAll('#', '\0'), // 如果路径里含有#,替换为非法文本\0，所有系统的路径都不可能存在这个文本
+                        name: fileName,
+                        path: item.path.replaceAll('#', '\0'),
                         uk: this.uk,
                         shareid: this.shareid,
-                        fsid: item.fs_id || item.fsid
+                        fsid: item.fs_id || item.fsid,
+                        size: item.size,
+                        formatted_size: this.formatFileSize(item.size),
+                        thumbnail: thumbnail
                     })
                 }
             });
@@ -227,12 +256,24 @@ class BaiduDrive {
                 if (item.category === '1' || item.category === 1) {
                     // 确保所有情况下都提取文件名
                     const fileName = item.server_filename || item.path.split('/').pop();
+
+                    // 提取缩略图
+                    let thumbnail = '';
+                    if (item.thumbs) {
+                        thumbnail = item.thumbs.url || item.thumbs.icon || '';
+                    } else if (item.icon) {
+                        thumbnail = item.icon;
+                    }
+
                     videos.push({
-                        name: fileName, // 只使用文件名
-                        path: item.path.replaceAll('#', '\0'), // 如果路径里含有#,替换为非法文本\0，所有系统的路径都不可能存在这个文本
+                        name: fileName,
+                        path: item.path.replaceAll('#', '\0'),
                         uk: this.uk,
                         shareid: this.shareid,
-                        fsid: item.fs_id || item.fsid
+                        fsid: item.fs_id || item.fsid,
+                        size: item.size,
+                        formatted_size: this.formatFileSize(item.size),
+                        thumbnail: thumbnail
                     })
                 }
             });
@@ -323,12 +364,6 @@ class BaiduDrive {
             headers: header
         })).data
         if (data.errno === 0 && data.list.length > 0) {
-            // let relink = await axios.get(link,{
-            //     headers:header,
-            //     redirect: false,
-            //     onlyHeaders: true
-            // })
-            // console.log(relink)
             return data.list[0].dlink // 返回直链地址
         }
     }

@@ -49,11 +49,23 @@ const routes = [
     name: 'database',
     component: () => import('../views/Database.vue'),
     meta: { title: '数据库' }
+  },
+  {
+    path: '/subscription',
+    name: 'subscription',
+    component: () => import('../views/Subscription.vue'),
+    meta: { title: '订阅管理' }
+  },
+  {
+    path: '/backup',
+    name: 'backup',
+    component: () => import('../views/Backup.vue'),
+    meta: { title: '系统备份' }
   }
 ]
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(import.meta.env.VITE_BASE_PATH || import.meta.env.BASE_URL),
   routes
 })
 
@@ -64,6 +76,10 @@ router.beforeEach((to, from, next) => {
   if (window.innerWidth < 1024) {
     themeStore.closeSidebar()
   }
+  
+  // Update document title
+  document.title = to.meta.title ? `${to.meta.title} - DRPYS ADMIN` : 'DRPYS ADMIN'
+  
   next()
 })
 

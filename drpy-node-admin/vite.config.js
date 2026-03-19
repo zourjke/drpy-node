@@ -1,41 +1,56 @@
-import { defineConfig } from 'vite'
-import vue from '@vitejs/plugin-vue'
-import { resolve } from 'path'
+import { fileURLToPath } from 'url';
+import { defineConfig, loadEnv } from 'vite';
+import vue from '@vitejs/plugin-vue';
+import path from 'path';
 
-export default defineConfig({
-  plugins: [vue()],
-  server: {
-    port: 5174,
-    proxy: {
-      '/api-proxy': {
-        target: 'http://localhost:5757',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api-proxy/, '')
-      },
-      '/ws': {
-        target: 'http://localhost:5757',
-        ws: true
-      },
-      // Proxy admin API requests
-      '/admin': {
-        target: 'http://localhost:5757',
-        changeOrigin: true
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+export default defineConfig(({ command, mode }) => {
+  // 加载环境变量
+  const env = loadEnv(mode, process.cwd(), '');
+
+  return {
+    plugins: [vue()],
+
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, 'src')
       }
-    }
-  },
-  build: {
-    outDir: 'dist',
-    assetsDir: 'assets',
-    rollupOptions: {
-      input: {
-        main: resolve(__dirname, 'index.html')
+    },
+
+    // 构建配置
+    build: {
+      outDir: path.resolve(__dirname, '../apps/admin'),
+      emptyOutDir: true,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor': ['vue', 'vue-router', 'pinia'],
+            'ui': ['axios']
+          }
+        }
       },
-      output: {
-        manualChunks: {
-          'vue-vendor': ['vue', 'vue-router', 'pinia'],
-          'utils': ['axios']
+      chunkSizeWarningLimit: 1000
+    },
+
+    // 开发服务器配置
+    server: {
+      port: 5174,
+      proxy: {
+        // 所有 API 请求代理到 drpy-node
+        '/api': {
+          target: 'http://localhost:5757',
+          changeOrigin: true
+        },
+        // WebSocket 代理
+        '/ws': {
+          target: 'ws://localhost:5757',
+          ws: true
         }
       }
-    }
-  }
-})
+    },
+
+    // 基础路径
+    base: mode.includes('production') ? (env.VITE_BASE_PATH || './') : '/'
+  };
+});

@@ -1,7 +1,7 @@
 import path from 'path';
 import {readdirSync, readFileSync, writeFileSync, existsSync, createReadStream} from 'fs';
-// import '../utils/marked.min.js';
-import { marked } from "marked";
+import '../utils/marked.min.js';
+// import { marked } from "marked";
 import {computeHash} from '../utils/utils.js';
 import {validateBasicAuth} from "../utils/api_validate.js";
 import {daemon} from "../utils/daemonManager.js";

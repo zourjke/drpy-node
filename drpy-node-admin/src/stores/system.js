@@ -7,7 +7,7 @@ export const useSystemStore = defineStore('system', () => {
   const health = ref({ status: 'unknown' })
   const logs = ref([])
   const routes = ref([])
-  const sources = ref({ js: [], catvod: [] })
+  const sources = ref({ js: [], catvod: [], php: [], py: [] })
   const loading = ref(false)
   const error = ref(null)
 

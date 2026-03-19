@@ -8,6 +8,9 @@ const router = useRouter()
 const systemStore = useSystemStore()
 
 const validating = ref(null)
+
+// Page layout refs for sticky header
+const pageContainer = ref(null)
 const validationResults = ref({})
 
 const sourcesList = computed(() => {
@@ -21,7 +24,17 @@ const sourcesList = computed(() => {
     type: 'catvod',
     path: `spider/catvod/${name}`
   }))
-  return [...jsSources, ...catvodSources]
+  const phpSources = (systemStore.sources.php || []).map(name => ({
+    name,
+    type: 'php',
+    path: `spider/php/${name}`
+  }))
+  const pySources = (systemStore.sources.py || []).map(name => ({
+    name,
+    type: 'py',
+    path: `spider/py/${name}`
+  }))
+  return [...jsSources, ...catvodSources, ...phpSources, ...pySources]
 })
 
 const filterType = ref('all')
@@ -69,63 +82,70 @@ const editSource = (source) => {
 </script>
 
 <template>
-  <div class="space-y-6">
-    <!-- Header -->
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-      <div>
-        <h2 class="text-xl font-semibold">源管理</h2>
-        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          管理和验证 drpy 源文件
-        </p>
+  <div class="sources-page">
+    <!-- Sticky Header Section -->
+    <div class="sources-header">
+      <!-- Header -->
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 class="text-xl font-semibold">源管理</h2>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            管理和验证 drpy 源文件
+          </p>
+        </div>
+        <button
+          @click="systemStore.fetchSources()"
+          :disabled="systemStore.loading"
+          class="btn btn-secondary"
+        >
+          <svg v-if="systemStore.loading" class="w-4 h-4 mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          刷新列表
+        </button>
       </div>
-      <button
-        @click="systemStore.fetchSources()"
-        :disabled="systemStore.loading"
-        class="btn btn-secondary"
-      >
-        <svg v-if="systemStore.loading" class="w-4 h-4 mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-        </svg>
-        刷新列表
-      </button>
+
+      <!-- Filters -->
+      <div class="card p-4">
+        <div class="flex flex-col sm:flex-row gap-4">
+          <!-- Search -->
+          <div class="flex-1">
+            <input
+              v-model="searchQuery"
+              type="text"
+              placeholder="搜索源文件..."
+              class="input"
+            />
+          </div>
+
+          <!-- Type filter -->
+          <div class="flex gap-2 flex-wrap">
+            <button
+              v-for="type in [
+                { value: 'all', label: '全部' },
+                { value: 'js', label: 'JS' },
+                { value: 'catvod', label: 'CatVod' },
+                { value: 'php', label: 'PHP' },
+                { value: 'py', label: 'HIPY' }
+              ]"
+              :key="type.value"
+              @click="filterType = type.value"
+              class="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              :class="filterType === type.value
+                ? 'bg-primary-600 text-white'
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'"
+            >
+              {{ type.label }}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <!-- Filters -->
-    <div class="card p-4">
-      <div class="flex flex-col sm:flex-row gap-4">
-        <!-- Search -->
-        <div class="flex-1">
-          <input
-            v-model="searchQuery"
-            type="text"
-            placeholder="搜索源文件..."
-            class="input"
-          />
-        </div>
-
-        <!-- Type filter -->
-        <div class="flex gap-2">
-          <button
-            v-for="type in [
-              { value: 'all', label: '全部' },
-              { value: 'js', label: 'JS' },
-              { value: 'catvod', label: 'CatVod' }
-            ]"
-            :key="type.value"
-            @click="filterType = type.value"
-            class="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            :class="filterType === type.value
-              ? 'bg-primary-600 text-white'
-              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'"
-          >
-            {{ type.label }}
-          </button>
-        </div>
-      </div>
-    </div>
-
+    <!-- Scrollable Content -->
+    <div class="sources-content">
     <!-- Stats -->
-    <div class="grid grid-cols-3 gap-4">
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
       <div class="card p-4 text-center">
         <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ filteredSources.length }}</p>
         <p class="text-sm text-gray-500 dark:text-gray-400">显示</p>
@@ -137,6 +157,14 @@ const editSource = (source) => {
       <div class="card p-4 text-center">
         <p class="text-2xl font-bold text-purple-600">{{ systemStore.sources.catvod?.length || 0 }}</p>
         <p class="text-sm text-gray-500 dark:text-gray-400">CatVod 源</p>
+      </div>
+      <div class="card p-4 text-center">
+        <p class="text-2xl font-bold text-indigo-600">{{ systemStore.sources.php?.length || 0 }}</p>
+        <p class="text-sm text-gray-500 dark:text-gray-400">PHP 源</p>
+      </div>
+      <div class="card p-4 text-center">
+        <p class="text-2xl font-bold text-yellow-600">{{ systemStore.sources.py?.length || 0 }}</p>
+        <p class="text-sm text-gray-500 dark:text-gray-400">HIPY 源</p>
       </div>
     </div>
 
@@ -162,9 +190,14 @@ const editSource = (source) => {
               <div class="flex items-center gap-3">
                 <span
                   class="badge text-xs"
-                  :class="source.type === 'js' ? 'badge-info' : 'badge-warning'"
+                  :class="{
+                    'badge-info': source.type === 'js',
+                    'badge-warning': source.type === 'catvod',
+                    'badge-primary': source.type === 'php',
+                    'badge-success': source.type === 'py'
+                  }"
                 >
-                  {{ source.type.toUpperCase() }}
+                  {{ source.type === 'py' ? 'HIPY' : source.type.toUpperCase() }}
                 </span>
                 <h4 class="font-medium text-gray-900 dark:text-gray-100 truncate">
                   {{ source.name }}
@@ -217,5 +250,26 @@ const editSource = (source) => {
         </div>
       </div>
     </div>
+    </div>
   </div>
 </template>
+
+<style scoped>
+.sources-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 8rem - 4rem);
+  min-height: 500px;
+}
+
+.sources-header {
+  flex-shrink: 0;
+  padding-bottom: 1rem;
+}
+
+.sources-content {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+</style>

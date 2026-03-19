@@ -74,7 +74,7 @@ let quick_data = {
     直链1: 'https://vdse.bdstatic.com//628ca08719cef5987ea2ae3c6f0d2386.mp4',
     嗅探1: 'https://www.6080kk.cc/haokanplay/178120-1-1.html',
     嗅探2: 'https://www.hahads.com/play/537106-3-1.html',
-    央视跨源:'cctv://3c18e2b3bba249b78b831e910608cfec',
+    央视跨源: 'cctv://3c18e2b3bba249b78b831e910608cfec',
     多集: 'https://v.qq.com/x/cover/m441e3rjq9kwpsc/m00253deqqo.html@https://pan.quark.cn/s/6c8158e258f3@https://pan.baidu.com/s/1TdbgcwaMG1dK7B5pQ1LbBg?pwd=1234',
     海阔二级单线路: gzip(JSON.stringify({
         "actor": "剧集",
@@ -124,11 +124,12 @@ var rule = {
     类型: '设置',
     title: '设置中心',
     推荐: async function () {
-        let {publicUrl} = this;
+        let {publicUrl, requestHost} = this;
         // log('publicUrl:', publicUrl);
         let setIcon = urljoin(publicUrl, './images/icon_cookie/设置.png');
         let searchIcon = urljoin(publicUrl, './images/icon_cookie/搜索.jpg');
         let chatIcon = urljoin(publicUrl, './images/icon_cookie/chat.webp');
+        let drpySIcon = urljoin(publicUrl, './images/drpys.png');
         const data = deepCopy(action_data);
         data.push({
             vod_id: JSON.stringify({
@@ -143,6 +144,18 @@ var rule = {
             vod_name: '源内搜索',
             vod_pic: searchIcon,
             vod_tag: 'action',
+        });
+        data.unshift({
+            vod_id: JSON.stringify({
+                actionId: 'browser',
+                type: 'browser',
+                title: '后台管理',
+                url: requestHost + '/apps/admin',
+                header: {'Authorization': 'Basic YWRtaW46ZHJweXM='},
+            }),
+            vod_name: '后台管理',
+            vod_pic: drpySIcon,
+            vod_tag: 'action'
         });
         data.forEach(it => {
             if (!it.vod_pic) {
