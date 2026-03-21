@@ -9,6 +9,7 @@ import qs from 'qs';
 import {fileURLToPath} from 'url';
 import {validateBasicAuth, validateJs, validatePwd, validatHtml} from "./utils/api_validate.js";
 import {startAllPlugins} from "./utils/pluginManager.js";
+import { PROJECT_ROOT } from "./utils/pathHelper.js";
 // 注册自定义import钩子
 import './utils/esm-register.mjs';
 // 引入python守护进程
@@ -19,7 +20,7 @@ import {registerRoutes, registerWsRoutes} from './controllers/index.js';
 const {fastify, wsApp} = fastlogger;
 
 // 获取当前路径
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const __dirname = PROJECT_ROOT;
 const PORT = 5757;
 const WsPORT = 57575;
 const MAX_TEXT_SIZE = process.env.MAX_TEXT_SIZE || 0.1 * 1024 * 1024; // 设置最大文本大小为 0.1 MB

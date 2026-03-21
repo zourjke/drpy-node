@@ -1,3 +1,4 @@
+import { PROJECT_ROOT } from '../utils/pathHelper.js';
 /**
  * WebDAV 代理控制器模块
  * 提供 WebDAV 文件的 HTTP 直链访问功能
@@ -43,7 +44,7 @@ export default (fastify, options, done) => {
      */
     function loadDefaultConfig() {
         try {
-            const configPath = path.join(process.cwd(), 'json', 'webdav.json');
+            const configPath = path.join(PROJECT_ROOT, 'json', 'webdav.json');
             const configData = readFileSync(configPath, 'utf8');
             const parsed = JSON.parse(configData);
 

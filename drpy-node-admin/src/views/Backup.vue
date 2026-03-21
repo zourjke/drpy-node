@@ -235,9 +235,9 @@ onMounted(() => {
     </div>
 
     <!-- Scrollable Content - Split into 2 blocks side-by-side on large screens -->
-    <div class="backup-content flex-1 flex flex-col lg:flex-row gap-4 min-h-0">
+    <div class="backup-content">
         <!-- Left Block: File List -->
-        <div class="card flex-1 flex flex-col min-h-0 min-h-[300px] lg:min-h-0">
+        <div class="card">
             <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
                 <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-200">包含文件</h3>
                 <button @click="openFilePicker" class="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 font-medium flex items-center gap-1">
@@ -268,7 +268,7 @@ onMounted(() => {
         </div>
 
         <!-- Right Block: Logs -->
-        <div class="card flex-1 flex flex-col min-h-0 min-h-[300px] lg:min-h-0">
+        <div class="card">
             <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 font-semibold text-gray-700 dark:text-gray-200 text-sm bg-gray-50 dark:bg-gray-800/50 flex justify-between items-center">
                 <span>操作日志</span>
                 <span class="text-xs font-normal text-gray-400">{{ logs.length }} 条记录</span>
@@ -356,7 +356,6 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   height: calc(100vh - 8rem);
-  min-height: 400px;
 }
 
 .backup-header {
@@ -367,12 +366,21 @@ onMounted(() => {
 .backup-content {
   flex: 1;
   min-height: 0;
-  /* Always allow flex row on large screens, stack on small */
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
-/* Let individual cards scroll their content, prevent the page from scrolling */
+@media (min-width: 1024px) {
+  .backup-content {
+    flex-direction: row;
+  }
+}
+
 .backup-content > .card {
-  /* On small screens flex basis will be auto so it can grow if we change min-height */
-  /* On large screens they split 50/50 */
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* Crucial for nested scrolling */
 }
 </style>

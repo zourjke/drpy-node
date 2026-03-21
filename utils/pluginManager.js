@@ -1,3 +1,4 @@
+import { PROJECT_ROOT } from './pathHelper.js';
 import fs from "fs";
 import path from "path";
 import {spawn} from "child_process";
@@ -135,7 +136,7 @@ function getProcessKey(plugin, index) {
  * 启动所有插件
  * @param {string} rootDir 项目根目录
  */
-export function startAllPlugins(rootDir = process.cwd()) {
+export function startAllPlugins(rootDir = PROJECT_ROOT) {
     console.log("[pluginManager] 准备启动所有插件...");
     const processes = {};
     const inactivePlugins = [];

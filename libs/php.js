@@ -8,9 +8,10 @@ import {computeHash, deepCopy, getNowTime, urljoin} from "../utils/utils.js";
 import {prepareBinary} from "../utils/binHelper.js";
 import {md5} from "../libs_drpy/crypto-util.js";
 import {fastify} from "../controllers/fastlogger.js";
+import { PROJECT_ROOT } from '../utils/pathHelper.js';
 // import dotenv from 'dotenv';
 //
-// dotenv.config({ path: path.join(process.cwd(), '.env.development') });
+// dotenv.config({ path: path.join(PROJECT_ROOT, '.env.development') });
 
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

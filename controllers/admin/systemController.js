@@ -8,6 +8,9 @@ import { exec } from 'child_process';
 import util from 'util';
 import path from 'path';
 import fs from '../../utils/fsWrapper.js';
+import { isPhpAvailable, phpVersion } from '../../utils/phpEnv.js';
+import { daemon } from '../../utils/daemonManager.js';
+import { PROJECT_ROOT } from '../../utils/pathHelper.js';
 
 const execPromise = util.promisify(exec);
 
@@ -16,7 +19,14 @@ export async function getHealth(req, reply) {
     try {
         const uptime = process.uptime();
         const memory = process.memoryUsage();
-        const packageJson = await fs.readJson(path.join(process.cwd(), 'package.json'));
+        const packageJson = await fs.readJson(path.join(PROJECT_ROOT, 'package.json'));
+
+        let pythonAvailable = false;
+        try {
+            pythonAvailable = await daemon.isPythonAvailable();
+        } catch (err) {
+            console.error('检查 Python 状态失败:', err);
+        }
 
         return reply.send({
             status: 'ok',
@@ -32,6 +42,10 @@ export async function getHealth(req, reply) {
                 platform: os.platform(),
                 nodeVersion: process.version
             },
+            env: {
+                php: isPhpAvailable ? (phpVersion || true) : false,
+                python: pythonAvailable
+            },
             timestamp: Date.now()
         });
     } catch (e) {
@@ -45,6 +59,13 @@ export async function getHealth(req, reply) {
 // 服务重启
 export async function restartService(req, reply) {
     try {
+        if (process.env.READ_ONLY_MODE === '1') {
+            return reply.send({
+                success: false,
+                message: '系统当前处于只读模式，禁止远程重启服务'
+            });
+        }
+
         // 检查是否在 PM2 环境运行
         try {
             await execPromise('pm2 restart drpys');

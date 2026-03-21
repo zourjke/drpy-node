@@ -108,6 +108,19 @@ export const adminApi = {
         return client.post('/api/admin/sub/file', { name, content });
     },
 
+    // ==================== 插件管理 ====================
+    async getPlugins() {
+        return client.get('/api/admin/plugins');
+    },
+
+    async savePlugins(plugins) {
+        return client.post('/api/admin/plugins', { plugins });
+    },
+
+    async restorePlugins() {
+        return client.post('/api/admin/plugins/restore');
+    },
+
     // ==================== 备份恢复 ====================
     async getBackupConfig() {
         return client.get('/api/admin/backup/config');

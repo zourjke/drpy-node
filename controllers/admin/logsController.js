@@ -5,12 +5,13 @@
 
 import fs from '../../utils/fsWrapper.js';
 import path from 'path';
+import { PROJECT_ROOT } from '../../utils/pathHelper.js';
 
 // 读取日志
 export async function getLogs(req, reply) {
     try {
         const lines = parseInt(req.query.lines) || 50;
-        const logDir = path.join(process.cwd(), 'logs');
+        const logDir = path.join(PROJECT_ROOT, 'logs');
 
         if (!await fs.pathExists(logDir)) {
             return reply.send({
@@ -52,7 +53,7 @@ export async function getLogs(req, reply) {
 
 async function streamLogs(socket, lines) {
     try {
-        const logDir = path.join(process.cwd(), 'logs');
+        const logDir = path.join(PROJECT_ROOT, 'logs');
         const files = await fs.readdir(logDir);
         const logFiles = files
             .filter(f => f.endsWith('.log.txt'))

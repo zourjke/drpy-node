@@ -1,8 +1,9 @@
 import fs from '../fsWrapper.js';
 import path from 'path';
+import { PROJECT_ROOT } from '../pathHelper.js';
 
 export async function readLogLines(lines = 50) {
-    const logDir = path.join(process.cwd(), 'logs');
+    const logDir = path.join(PROJECT_ROOT, 'logs');
     
     if (!await fs.pathExists(logDir)) {
         return { file: null, content: '日志目录不存在' };

@@ -15,9 +15,12 @@ import * as filesController from './admin/filesController.js';
 import * as dbController from './admin/dbController.js';
 import * as subController from './admin/subController.js';
 import * as backupController from './admin/backupController.js';
+import * as pluginsController from './admin/pluginsController.js';
+import * as terminalController from './admin/terminalController.js';
+import { PROJECT_ROOT } from '../utils/pathHelper.js';
 
 // 配置常量
-const CONFIG_PATH = path.join(process.cwd(), 'config/env.json');
+const CONFIG_PATH = path.join(PROJECT_ROOT, 'config/env.json');
 
 const FULL_ENV_TEMPLATE = {
     "ali_token": "",
@@ -88,6 +91,8 @@ export default async function adminController(fastify, options) {
     // ==================== 系统管理 API ====================
     fastify.get('/api/admin/health', systemController.getHealth);
     fastify.post('/api/admin/restart', systemController.restartService);
+    fastify.get('/api/admin/terminal/status', terminalController.getTerminalStatus);
+    fastify.get('/api/admin/terminal/ws', { websocket: true }, terminalController.handleTerminalWs);
 
     // ==================== 日志 API ====================
     fastify.get('/api/admin/logs', logsController.getLogs);
@@ -127,6 +132,11 @@ export default async function adminController(fastify, options) {
     fastify.post('/api/admin/backup/config/reset', backupController.resetBackupConfig);
     fastify.post('/api/admin/backup/create', backupController.createBackup);
     fastify.post('/api/admin/backup/restore', backupController.restoreBackup);
+
+    // ==================== 插件管理 API ====================
+    fastify.get('/api/admin/plugins', pluginsController.getPlugins);
+    fastify.post('/api/admin/plugins', pluginsController.savePlugins);
+    fastify.post('/api/admin/plugins/restore', pluginsController.restorePlugins);
 
     // ==================== 路由信息 API ====================
     fastify.get('/api/admin/routes', getRoutesInfo);
@@ -252,7 +262,7 @@ async function getEnv(req, reply) {
 
 async function getVersion(req, reply) {
     try {
-        const packageJson = await fs.readJson(path.join(process.cwd(), 'package.json'));
+        const packageJson = await fs.readJson(path.join(PROJECT_ROOT, 'package.json'));
         return reply.send({ version: packageJson.version });
     } catch (e) {
         reply.code(500).send({ error: e.message });
@@ -261,7 +271,7 @@ async function getVersion(req, reply) {
 
 async function getRoutesInfo(req, reply) {
     try {
-        const indexControllerPath = path.join(process.cwd(), 'controllers/index.js');
+        const indexControllerPath = path.join(PROJECT_ROOT, 'controllers/index.js');
 
         if (!await fs.pathExists(indexControllerPath)) {
             return reply.send({

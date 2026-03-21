@@ -4,7 +4,7 @@ import {join, basename, dirname, resolve, relative} from 'path';
 import url from 'url';
 
 // 要排除的目录列表
-const EXCLUDE_DIRS = ['.git', '.idea', 'soft', 'examples', 'apps/cat', 'plugins/pvideo', 'plugins/req-proxy', 'plugins/pup-sniffer', 'plugins/mediaProxy', 'pyTools', 'drop_code', 'local', 'logs', '对话1.txt', 'vod_cache', 'data/mv', 'drpy-node-mcp', 'drpy-node-bundle', 'drpy-node-admin', 'drpy2-quickjs'];
+const EXCLUDE_DIRS = ['.git', '.idea', 'soft', 'examples', 'apps/cat', 'plugins/pvideo', 'plugins/req-proxy', 'plugins/pup-sniffer', 'plugins/mediaProxy', 'pyTools', 'drop_code', 'local', 'logs', '对话1.txt', 'vod_cache', 'data/mv', 'drpy-node-mcp', 'drpy-node-bundle', 'drpy-node-admin', 'drpy2-quickjs', 'node-pty'];
 
 // 要排除的文件列表
 const EXCLUDE_FILES = ['config/env.json', '.env', '.claude', 'clipboard.txt', 'clipboard.txt.bak', '.plugins.js', 'yarn.lock', 't4_daemon.pid', 'spider/js/UC分享.js', 'spider/js/百忙无果[官].js', 'spider/catvod/mtv60w[差].js', 'json/UC分享.json', 'jx/_30wmv.js', 'jx/奇奇.js', 'jx/芒果关姐.js', 'data/settings/link_data.json', 'index.json', 'custom.json'];

@@ -1,3 +1,4 @@
+import { PROJECT_ROOT } from '../utils/pathHelper.js';
 /**
  * 剪贴板推送控制器
  * 提供剪贴板内容的添加、清空、读取功能
@@ -112,8 +113,8 @@ export default async function (fastify, options) {
         }
 
         // 文件路径安全检查
-        const filePath = path.resolve(process.cwd(), 'clipboard.txt');
-        if (!filePath.startsWith(process.cwd())) {
+        const filePath = path.resolve(PROJECT_ROOT, 'clipboard.txt');
+        if (!filePath.startsWith(PROJECT_ROOT)) {
             return reply.code(500).send('Invalid file path');
         }
 
@@ -125,8 +126,8 @@ export default async function (fastify, options) {
                 // 覆盖模式：先备份
                 try {
                     const currentContent = await fs.readFile(filePath, 'utf8');
-                    const backupPath = path.resolve(process.cwd(), 'clipboard.txt.bak');
-                    if (backupPath.startsWith(process.cwd())) {
+                    const backupPath = path.resolve(PROJECT_ROOT, 'clipboard.txt.bak');
+                    if (backupPath.startsWith(PROJECT_ROOT)) {
                         await fs.writeFile(backupPath, currentContent);
                         fastify.log.info(`Clipboard content backed up to ${backupPath}`);
                     }
@@ -152,11 +153,11 @@ export default async function (fastify, options) {
     fastify.post('/clipboard/clear', {
         preHandler: [validateVercel, authenticate],
     }, async (request, reply) => {
-        const filePath = path.resolve(process.cwd(), 'clipboard.txt');
-        const backupPath = path.resolve(process.cwd(), 'clipboard.txt.bak');
+        const filePath = path.resolve(PROJECT_ROOT, 'clipboard.txt');
+        const backupPath = path.resolve(PROJECT_ROOT, 'clipboard.txt.bak');
 
         // 文件路径安全检查
-        if (!filePath.startsWith(process.cwd()) || !backupPath.startsWith(process.cwd())) {
+        if (!filePath.startsWith(PROJECT_ROOT) || !backupPath.startsWith(PROJECT_ROOT)) {
             return reply.code(500).send('Invalid file path');
         }
 
@@ -193,9 +194,9 @@ export default async function (fastify, options) {
     fastify.get('/clipboard/read', {
         preHandler: [validateVercel, authenticate],
     }, async (request, reply) => {
-        const filePath = path.resolve(process.cwd(), 'clipboard.txt');
+        const filePath = path.resolve(PROJECT_ROOT, 'clipboard.txt');
         // 文件路径安全检查
-        if (!filePath.startsWith(process.cwd())) {
+        if (!filePath.startsWith(PROJECT_ROOT)) {
             return reply.code(500).send('Invalid file path');
         }
 

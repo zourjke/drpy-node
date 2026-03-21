@@ -109,12 +109,17 @@ export class DaemonManager {
 
     /**
      * 检查Python是否可用
-     * @returns {Promise<boolean>} Python是否可用
+     * @returns {Promise<string|boolean>} Python是否可用，可用则返回版本号字符串，否则返回false
      */
     async isPythonAvailable() {
         try {
-            const {stdout} = await execAsync(`${this.getPythonPath()} --version`);
-            return stdout.includes('Python');
+            const {stdout, stderr} = await execAsync(`${this.getPythonPath()} --version`);
+            const out = stdout || stderr;
+            if (out && out.includes('Python')) {
+                const match = out.match(/Python\s+([0-9.]+)/i);
+                return match ? match[1] : true;
+            }
+            return false;
         } catch {
             return false;
         }

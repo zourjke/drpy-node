@@ -8,16 +8,17 @@ import path from 'path';
 import vm from 'vm';
 import { execFile } from 'child_process';
 import util from 'util';
+import { PROJECT_ROOT } from '../../utils/pathHelper.js';
 
 const execFileAsync = util.promisify(execFile);
 
 // 列出所有源
 export async function listSources(req, reply) {
     try {
-        const jsPath = path.join(process.cwd(), 'spider/js');
-        const catvodPath = path.join(process.cwd(), 'spider/catvod');
-        const phpPath = path.join(process.cwd(), 'spider/php');
-        const pyPath = path.join(process.cwd(), 'spider/py');
+        const jsPath = path.join(PROJECT_ROOT, 'spider/js');
+        const catvodPath = path.join(PROJECT_ROOT, 'spider/catvod');
+        const phpPath = path.join(PROJECT_ROOT, 'spider/php');
+        const pyPath = path.join(PROJECT_ROOT, 'spider/py');
 
         let jsSources = [];
         let catvodSources = [];
@@ -73,7 +74,7 @@ export async function validateSpider(req, reply) {
             });
         }
 
-        const fullPath = path.join(process.cwd(), filePath);
+        const fullPath = path.join(PROJECT_ROOT, filePath);
         if (!await fs.pathExists(fullPath)) {
             return reply.code(404).send({
                 isValid: false,
@@ -183,7 +184,7 @@ export async function checkSyntax(req, reply) {
             });
         }
 
-        const fullPath = path.join(process.cwd(), filePath);
+        const fullPath = path.join(PROJECT_ROOT, filePath);
         
         // PHP 语法检查
         if (filePath.endsWith('.php')) {
@@ -345,8 +346,8 @@ function isSafePath(filePath) {
     if (path.isAbsolute(filePath)) return false;
 
     // Resolve full path and check if it is within CWD
-    const fullPath = path.resolve(process.cwd(), filePath);
-    const cwd = process.cwd();
+    const fullPath = path.resolve(PROJECT_ROOT, filePath);
+    const cwd = PROJECT_ROOT;
     
     // Ensure the resolved path is inside the current working directory
     if (!fullPath.startsWith(cwd)) return false;

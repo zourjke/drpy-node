@@ -23,7 +23,21 @@ export const validateBasicAuth = (request, reply, done) => {
         console.log(`[validateBasicAuth] 猫配置文件 ${cf_path} 进入Basic登录鉴权`);
     }
     // console.log('进入了basic验证');
-    const authHeader = request.headers.authorization;
+    let authHeader = request.headers.authorization;
+
+    // 支持通过 query 参数传递 auth (用于 WebSocket 等无法自定义 Header 的场景)
+    if (!authHeader && request.query && request.query.auth) {
+        authHeader = `Basic ${request.query.auth}`;
+    }
+
+    // 支持通过 sec-websocket-protocol 传递 auth (格式: base64.basic.auth)
+    if (!authHeader && request.headers['sec-websocket-protocol']) {
+        const protocols = request.headers['sec-websocket-protocol'].split(',').map(s => s.trim());
+        const authProtocol = protocols.find(p => p.startsWith('base64.'));
+        if (authProtocol) {
+            authHeader = `Basic ${authProtocol.substring(7)}`;
+        }
+    }
 
     if (!authHeader) {
         reply.header('WWW-Authenticate', 'Basic');

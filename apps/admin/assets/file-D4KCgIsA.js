@@ -1,1 +1,0 @@
-import{a as r}from"./admin-DEAtY0pm.js";const l={async listDirectory(e="."){return await r.listDirectory(e)},async readFile(e){return await r.readFile(e)},async writeFile(e,t){return await r.writeFile(e,t)},async deleteFile(e){return await r.deleteFile(e)}};export{l as f};

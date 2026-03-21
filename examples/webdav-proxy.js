@@ -12,6 +12,7 @@ import Fastify from 'fastify';
 import { WebDAVClient } from '../utils/webdav.js';
 import { readFileSync } from 'fs';
 import path from 'path';
+import { PROJECT_ROOT } from '../utils/pathHelper.js';
 
 class WebDAVProxy {
     constructor(options = {}) {
@@ -287,7 +288,7 @@ class WebDAVProxy {
      */
     loadDefaultConfig() {
         try {
-            const configPath = path.join(process.cwd(), 'json', 'webdav.json');
+            const configPath = path.join(PROJECT_ROOT, 'json', 'webdav.json');
             const configData = readFileSync(configPath, 'utf8');
             const parsed = JSON.parse(configData);
             

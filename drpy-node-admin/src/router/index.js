@@ -69,10 +69,35 @@ const routes = [
     meta: { title: '订阅管理' }
   },
   {
+    path: '/plugins',
+    name: 'plugins',
+    component: () => import('../views/Plugins.vue'),
+    meta: { title: '插件管理' }
+  },
+  {
     path: '/backup',
     name: 'backup',
     component: () => import('../views/Backup.vue'),
     meta: { title: '系统备份' }
+  },
+  {
+    path: '/terminal',
+    name: 'terminal',
+    component: () => import('../views/Terminal.vue'),
+    meta: { title: '终端模拟' },
+    beforeEnter: async (to, from, next) => {
+      try {
+        const apiClient = (await import('../api/client.js')).default
+        const res = await apiClient.get('/api/admin/terminal/status')
+        if (res && res.available) {
+          next()
+        } else {
+          next('/')
+        }
+      } catch (e) {
+        next('/')
+      }
+    }
   }
 ]
 

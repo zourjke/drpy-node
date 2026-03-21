@@ -9,6 +9,7 @@ import {FTPClient} from '../utils/ftp.js';
 import {CacheManagerFactory, createHealthResponse, createStatusResponse} from '../utils/proxy-util.js';
 import {readFileSync} from 'fs';
 import path from 'path';
+import { PROJECT_ROOT } from '../utils/pathHelper.js';
 
 /**
  * FTP 代理控制器插件
@@ -37,7 +38,7 @@ export default (fastify, options, done) => {
      */
     function loadDefaultConfig() {
         try {
-            const configPath = path.join(process.cwd(), 'json', 'ftp.json');
+            const configPath = path.join(PROJECT_ROOT, 'json', 'ftp.json');
             const configData = readFileSync(configPath, 'utf8');
             const parsed = JSON.parse(configData);
 

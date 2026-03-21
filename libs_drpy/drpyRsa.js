@@ -80,7 +80,17 @@ export const RSA = {
 
     // 分段解密长数据
     decryptLongData: function (privateKey, encryptedData) {
-        const keySize = 256; // 2048 bits / 8 = 256 bytes
+        // 动态获取密钥大小
+        let keySize;
+        try {
+            const keyObj = crypto.createPrivateKey(privateKey);
+            const keyDetails = keyObj.asymmetricKeyDetails;
+            keySize = (keyDetails.modulusLength || 2048) / 8; // 默认2048位
+        } catch (error) {
+            console.warn('无法获取私钥大小，使用默认值256字节:', error.message);
+            keySize = 256; // 2048 bits / 8 = 256 bytes
+        }
+        
         const chunks = [];
 
         // 分段解密
@@ -90,31 +100,17 @@ export const RSA = {
                 // 尝试不同的填充方式
                 let decryptedSegment;
                 try {
-                    // 首先尝试 PKCS1 填充（与JSEncrypt兼容）
+                    // 强制使用 NO_PADDING 避免 Node 24+ 原生 PKCS1 解密出现的乱码问题
+                    // Node 24+ (OpenSSL 3.2+) 引入了对 PKCS1 的隐式拒绝机制，遇到非标准填充会返回随机乱码而不报错
                     decryptedSegment = crypto.privateDecrypt({
                         key: privateKey,
-                        padding: crypto.constants.RSA_PKCS1_PADDING
+                        padding: crypto.constants.RSA_NO_PADDING
                     }, segment);
-                } catch (pkcs1Error) {
-                    try {
-                        // 如果 PKCS1 失败，尝试 OAEP（默认）
-                        decryptedSegment = crypto.privateDecrypt(privateKey, segment);
-                    } catch (oaepError) {
-                        try {
-                            // 如果 OAEP 失败，尝试 NO_PADDING
-                            decryptedSegment = crypto.privateDecrypt({
-                                key: privateKey,
-                                padding: crypto.constants.RSA_NO_PADDING
-                            }, segment);
-                            // 手动移除 PKCS1 填充
-                            decryptedSegment = this.removePKCS1Padding(decryptedSegment);
-                        } catch (noPaddingError) {
-                            console.error('PKCS1 错误:', pkcs1Error.message);
-                            console.error('OAEP 错误:', oaepError.message);
-                            console.error('NO_PADDING 错误:', noPaddingError.message);
-                            throw pkcs1Error;
-                        }
-                    }
+                    // 手动移除 PKCS1 填充
+                    decryptedSegment = this.removePKCS1Padding(decryptedSegment);
+                } catch (error) {
+                    console.error('NO_PADDING 错误:', error.message);
+                    throw error;
                 }
                 chunks.push(decryptedSegment);
             } catch (error) {

@@ -4,6 +4,7 @@
 
 import { readFileSync } from 'fs';
 import path from 'path';
+import { PROJECT_ROOT } from '../utils/pathHelper.js';
 
 async function testWebDAVProxy() {
     console.log('=== WebDAV 代理服务器功能测试 ===\n');
@@ -13,7 +14,7 @@ async function testWebDAVProxy() {
     // 读取 WebDAV 配置
     let config;
     try {
-        const configPath = path.join(process.cwd(), '..', 'json', 'webdav.json');
+        const configPath = path.join(PROJECT_ROOT, 'json', 'webdav.json');
         const configData = readFileSync(configPath, 'utf8');
         const parsed = JSON.parse(configData);
         

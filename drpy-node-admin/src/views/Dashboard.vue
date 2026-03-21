@@ -1,9 +1,11 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useSystemStore } from '../stores/system'
+import apiClient from '../api/client'
 
 const systemStore = useSystemStore()
 const healthCheckInterval = ref(null)
+const isTerminalAvailable = ref(false)
 
 // Page layout refs for sticky header
 const pageContainer = ref(null)
@@ -12,6 +14,16 @@ onMounted(async () => {
   await systemStore.checkHealth()
   await systemStore.fetchRoutes()
   await systemStore.fetchSources()
+
+  // Check terminal status
+  try {
+    const res = await apiClient.get('/api/admin/terminal/status')
+    if (res && res.available) {
+      isTerminalAvailable.value = true
+    }
+  } catch (error) {
+    console.error('Failed to get terminal status:', error)
+  }
 
   // Check health every 30 seconds
   healthCheckInterval.value = setInterval(() => {
@@ -147,9 +159,23 @@ const restartService = async () => {
             运行时长: {{ formatUptime(systemStore.health.uptime) }}
           </span>
         </div>
-        <div class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center text-sm">
-           <span class="text-gray-500">系统版本</span>
-           <span class="badge badge-info font-mono text-xs">v{{ systemStore.health.version || 'Unknown' }}</span>
+        <div class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 flex flex-col gap-2 text-sm">
+          <div class="flex justify-between items-center">
+            <span class="text-gray-500">运行环境</span>
+            <div class="flex items-center gap-1.5">
+              <span class="badge bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 font-mono text-xs">{{ systemStore.health.platform?.platform }}</span>
+              <span class="badge bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 font-mono text-xs">{{ systemStore.health.platform?.arch }}</span>
+              <span class="badge bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400 font-mono text-xs">Node {{ systemStore.health.platform?.nodeVersion }}</span>
+            </div>
+          </div>
+          <div class="flex justify-between items-center">
+             <span class="text-gray-500">系统版本</span>
+             <div class="flex items-center gap-1.5">
+               <span class="badge font-mono text-xs" :class="systemStore.health.env?.php ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'" title="PHP环境状态">PHP {{ typeof systemStore.health.env?.php === 'string' ? systemStore.health.env.php : (systemStore.health.env?.php ? 'ON' : 'OFF') }}</span>
+               <span class="badge font-mono text-xs" :class="systemStore.health.env?.python ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'" title="Python环境状态">Py {{ typeof systemStore.health.env?.python === 'string' ? systemStore.health.env.python : (systemStore.health.env?.python ? 'ON' : 'OFF') }}</span>
+               <span class="badge badge-info font-mono text-xs">v{{ systemStore.health.version || 'Unknown' }}</span>
+             </div>
+          </div>
         </div>
       </div>
     </div>
@@ -326,6 +352,20 @@ const restartService = async () => {
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
           </svg>
           <span class="text-sm font-medium">订阅管理</span>
+        </RouterLink>
+
+        <RouterLink to="/plugins" class="flex flex-col items-center justify-center gap-2 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+          <svg class="w-6 h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
+          </svg>
+          <span class="text-sm font-medium">插件管理</span>
+        </RouterLink>
+
+        <RouterLink v-if="isTerminalAvailable" to="/terminal" class="flex flex-col items-center justify-center gap-2 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+          <svg class="w-6 h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <span class="text-sm font-medium">终端模拟</span>
         </RouterLink>
 
         <RouterLink to="/backup" class="flex flex-col items-center justify-center gap-2 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
