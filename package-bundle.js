@@ -21,6 +21,7 @@ const EXTRA_FILES = [
     '设置中心.js',
     '听友[听].js',
     '360影视[官].js',
+    '腾云驾雾[官].js',
     'Appget[模板].js',
     'Appmuou[模板].js',
     'AppShark[模板].js',

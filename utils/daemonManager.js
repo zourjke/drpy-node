@@ -1,9 +1,9 @@
 /**
  * Python守护进程管理器
- * 
+ *
  * 该模块提供了管理Python守护进程的功能，包括启动、停止、状态检查等。
  * 主要用于管理爬虫系统的Python后端服务。
- * 
+ *
  * @author drpy-node
  * @version 1.0.0
  */
@@ -55,7 +55,7 @@ function log(logFile, level, msg) {
 
 /**
  * Python守护进程管理器类
- * 
+ *
  * 负责管理Python守护进程的生命周期，包括启动、停止、状态监控等功能。
  * 支持两种模式：完整模式和轻量模式。
  */
@@ -207,7 +207,10 @@ export class DaemonManager {
             pythonPath: this.getPythonPath(),
             pythonOptions: ['-u'], // 无缓冲输出
             scriptPath: path.dirname(this.config.daemonScript),
-            env: {PYTHONIOENCODING: 'utf-8'}, // 设置编码
+            env: {
+                ...process.env,
+                PYTHONIOENCODING: 'utf-8'
+            }, // 设置编码
             args: [
                 '--pid-file', this.config.pidFile,
                 '--log-file', this.config.logFile,

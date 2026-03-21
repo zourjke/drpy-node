@@ -1,0 +1,1 @@
+import{a as t}from"./admin-B3kXoUHD.js";const r={async getHealth(){return await t.getHealth()},async restartService(){return await t.restartService()},async getRoutes(){return await t.getRoutes()},async getLogs(e=100){return await t.getLogs(e)},async getApiList(){return await t.getApiDocs()}};export{r as s};

@@ -87,20 +87,32 @@ const restartService = async () => {
   restarting.value = true
   try {
     const result = await systemStore.restartService()
-    // Parse MCP response format: { content: [{ type: "text", text: '{"success":true,"message":"..."}' }] }
+    
     let message = '操作已完成'
-    try {
-      // MCP 响应格式
-      if (result?.content?.[0]?.text) {
-        const parsed = JSON.parse(result.content[0].text)
-        message = parsed.message || message
-      } else if (typeof result === 'string') {
+    
+    if (result && typeof result === 'object') {
+      if (result.message) {
+        message = result.message
+      } else if (result.error) {
+        message = '操作失败: ' + result.error
+      } else if (result.content && result.content[0] && result.content[0].text) {
+        // 兼容旧版 MCP 响应格式
+        try {
+          const parsed = JSON.parse(result.content[0].text)
+          message = parsed.message || message
+        } catch {
+          // ignore
+        }
+      }
+    } else if (typeof result === 'string') {
+      try {
         const parsed = JSON.parse(result)
         message = parsed.message || result
+      } catch {
+        message = result
       }
-    } catch {
-      message = '操作已完成，请检查服务状态'
     }
+    
     alert(message)
   } catch (e) {
     alert('重启失败: ' + e.message)

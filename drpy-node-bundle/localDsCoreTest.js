@@ -39,3 +39,6 @@ console.log('resutl: header:', headers, 'buffer length:', buffer.length);
 
 const g = await getEngine('360影视[官]', {do: 'ds', ac: 'list', t: '2', ext: 'eyLnsbvlnosiOiLoqIDmg4UifQ=='})
 console.log(g)
+
+const h = await getEngine('腾云驾雾[官]', {do: 'ds', ac: 'list', t: 'movie', ext: 'eyJzb3J0IjoiODEifQ=='})
+console.log(h)

@@ -484,13 +484,17 @@ var rule = {
             if (flag.startsWith('Xun-')) {
                 log('迅雷云盘开始解析')
                 //转码和下载的第二个值不同
-                let urls = await Xun.getShareUrl(ids[0], ids[1], ids[3])
+                let urls = await Xun.getShareUrl(ids[0], ids[1], ids[3]);
+                const header = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36"
+                };
                 if (ENV.get('xun_auth') !== '') {
                     try {
                         let url = await Xun.getDownloadUrl(ids[0], ids[1], ids[3])
                         if (url !== '') {
+                            const proxyHeader = `&header=${encodeURIComponent(JSON.stringify(header))}`
                             urls.push('原画', url + "#isVideo=true##fastPlayMode##threads=20#")
-                            urls.push("猫画", `http://127.0.0.1:5575/proxy?thread=${ENV.get('thread') || 6}&chunkSize=256&url=` + encodeURIComponent(url));
+                            urls.push("猫画", `http://127.0.0.1:5575/proxy?thread=${ENV.get('thread') || 6}&chunkSize=256&url=` + encodeURIComponent(url) + proxyHeader);
                         }
                     } catch (err) {
                         log(`迅雷本地凭证肯可能已过期，请重新登录: ${err.message}`);
@@ -499,9 +503,7 @@ var rule = {
                 return {
                     parse: 0,
                     url: urls,
-                    header: {
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36"
-                    }
+                    header: header
                 }
             }
 
