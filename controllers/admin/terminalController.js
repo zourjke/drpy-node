@@ -49,16 +49,25 @@ export const handleTerminalWs = (socket, req) => {
     }
 
     // Determine shell based on platform
-    const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
+    const shell = os.platform() === 'win32' 
+        ? 'powershell.exe' 
+        : (process.env.SHELL || 'sh');
 
     // Spawn pty process
-    const ptyProcess = pty.spawn(shell, [], {
-        name: 'xterm-color',
-        cols: 80,
-        rows: 30,
-        cwd: PROJECT_ROOT,
-        env: process.env
-    });
+    let ptyProcess;
+    try {
+        ptyProcess = pty.spawn(shell, [], {
+            name: 'xterm-color',
+            cols: 80,
+            rows: 30,
+            cwd: PROJECT_ROOT,
+            env: process.env
+        });
+    } catch (e) {
+        socket.send(`\r\n\x1b[31m[!] Failed to start terminal process (${shell}): ${e.message}\x1b[0m\r\n`);
+        socket.close();
+        return;
+    }
 
     // Handle data from pty
     ptyProcess.onData((data) => {

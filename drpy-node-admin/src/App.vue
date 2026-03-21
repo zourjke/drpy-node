@@ -28,7 +28,9 @@ const themeStore = useThemeStore()
       <main class="content-area">
         <RouterView v-slot="{ Component }">
           <Transition name="fade" mode="out-in">
-            <component :is="Component" :key="$route.path" />
+            <KeepAlive :max="10">
+              <component :is="Component" />
+            </KeepAlive>
           </Transition>
         </RouterView>
       </main>

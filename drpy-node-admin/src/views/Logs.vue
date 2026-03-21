@@ -1,178 +1,26 @@
+<script>
+export default {
+  name: 'LogsView'
+}
+</script>
+
 <script setup>
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, onMounted, onActivated, watch, nextTick } from 'vue'
+import { storeToRefs } from 'pinia'
+import { useLogsStore } from '../stores/logs'
 
 const logContainer = ref(null)
-const autoScroll = ref(true)
-const wsConnected = ref(false)
-const wsError = ref(null)
-const logs = ref([])
-const maxLogs = ref(1000) // 最大保留日志行数
+const logsStore = useLogsStore()
 
-let ws = null
-let reconnectTimer = null
-let reconnectAttempts = 0
-const maxReconnectAttempts = 5
-
-const getWebSocketUrl = () => {
-  // 检查是否有自定义的后端地址配置
-  const customBackendUrl = import.meta.env.VITE_BACKEND_URL || window.BACKEND_URL
-
-  if (customBackendUrl) {
-    const protocol = customBackendUrl.startsWith('https') ? 'wss:' : 'ws:'
-    const host = customBackendUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')
-    return `${protocol}//${host}/api/admin/logs/stream`
-  }
-
-  // 默认：使用当前主机的 WebSocket 端点
-  // 开发环境：Vite 会代理到后端
-  // 生产环境：需要部署在同一个主机下或配置反向代理
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const host = window.location.host
-  return `${protocol}//${host}/ws`
-}
-
-const connectWebSocket = () => {
-  if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
-    return
-  }
-
-  ws = new WebSocket(getWebSocketUrl())
-
-  ws.onopen = () => {
-    console.log('WebSocket connected')
-    wsConnected.value = true
-    wsError.value = null
-    reconnectAttempts = 0
-
-    // 发送心跳保持连接
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'heartbeat' }))
-    }
-  }
-
-  ws.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data)
-
-      switch (data.type) {
-        case 'welcome':
-          // 连接成功，忽略欢迎消息
-          addLog('✓ 已连接到日志服务器', 'info')
-          break
-        case 'console':
-        case 'log':
-          // 日志消息 - 后端发送的是content字段
-          if (data.content) {
-            addLog(data.content, data.level || 'info')
-          } else if (data.message) {
-            addLog(data.message, data.level || 'info')
-          }
-          break
-        case 'broadcast':
-          // 广播消息
-          if (data.content) {
-            addLog(`[广播] ${data.content}`, 'info')
-          }
-          break
-        case 'echo':
-        case 'pong':
-          // 心跳响应，忽略
-          break
-        default:
-          // 其他消息也显示
-          if (data.message || data.content) {
-            addLog(data.message || data.content, 'info')
-          } else {
-            // 未知格式，显示原始数据
-            addLog(JSON.stringify(data), 'debug')
-          }
-      }
-    } catch (e) {
-      // 非JSON消息，直接显示
-      addLog(event.data, 'log')
-    }
-  }
-
-  ws.onerror = (error) => {
-    console.error('WebSocket error:', error)
-    wsError.value = '连接错误'
-  }
-
-  ws.onclose = (event) => {
-    console.log('WebSocket closed:', event.code, event.reason)
-    wsConnected.value = false
-
-    // 尝试重新连接
-    if (reconnectAttempts < maxReconnectAttempts) {
-      reconnectAttempts++
-      addLog(`连接断开，${reconnectAttempts}秒后重连... (${reconnectAttempts}/${maxReconnectAttempts})`, 'warn')
-      reconnectTimer = setTimeout(() => {
-        connectWebSocket()
-      }, reconnectAttempts * 1000)
-    } else {
-      addLog('连接已断开，请刷新页面重试', 'error')
-      wsError.value = '连接已断开'
-    }
-  }
-}
-
-const disconnectWebSocket = () => {
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer)
-    reconnectTimer = null
-  }
-  if (ws) {
-    // 移除所有事件监听器
-    ws.onopen = null
-    ws.onmessage = null
-    ws.onerror = null
-    ws.onclose = null
-
-    // 关闭连接
-    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-      ws.close(1000, 'Component unmounted')
-    }
-    ws = null
-  }
-  wsConnected.value = false
-  wsError.value = null
-}
-
-const addLog = (message, level = 'info') => {
-  const timestamp = new Date().toLocaleTimeString()
-
-  // 确保 message 是字符串
-  const safeMessage = typeof message === 'string' ? message : String(message)
-
-  logs.value.push({ timestamp, message: safeMessage, level })
-
-  // 限制日志数量
-  if (logs.value.length > maxLogs.value) {
-    logs.value.shift()
-  }
-
-  // 自动滚动 - 使用双层 nextTick 确保 DOM 完全更新
-  if (autoScroll.value) {
-    nextTick(() => {
-      nextTick(() => {
-        scrollToBottom()
-      })
-    })
-  }
-}
-
-const clearLogs = () => {
-  logs.value = []
-}
+// Extract reactive state from store
+const { wsConnected, wsError, logs, autoScroll } = storeToRefs(logsStore)
 
 const scrollToBottom = () => {
   if (logContainer.value) {
-    // 使用 scrollIntoView 滚动到最后一个子元素
     const lastElement = logContainer.value.lastElementChild
     if (lastElement) {
       lastElement.scrollIntoView({ behavior: 'instant', block: 'end' })
     } else {
-      // 备用方案：直接设置 scrollTop
       logContainer.value.scrollTop = logContainer.value.scrollHeight
     }
   }
@@ -181,15 +29,6 @@ const scrollToBottom = () => {
 const scrollToTop = () => {
   if (logContainer.value) {
     logContainer.value.scrollTop = 0
-  }
-}
-
-const toggleConnection = () => {
-  if (wsConnected.value) {
-    disconnectWebSocket()
-  } else {
-    reconnectAttempts = 0
-    connectWebSocket()
   }
 }
 
@@ -210,49 +49,36 @@ const getLogStyle = (level) => {
   }
 }
 
-let heartbeatInterval = null
-
 onMounted(() => {
-  connectWebSocket()
-
-  // 定期发送心跳
-  heartbeatInterval = setInterval(() => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'heartbeat' }))
-    }
-  }, 30000)
+  if (!logsStore.isInitialized) {
+    logsStore.connectWebSocket()
+    logsStore.isInitialized = true
+  }
 })
 
-onUnmounted(() => {
-  // 清理心跳定时器
-  if (heartbeatInterval) {
-    clearInterval(heartbeatInterval)
-    heartbeatInterval = null
+onActivated(() => {
+  if (autoScroll.value) {
+    nextTick(() => {
+      scrollToBottom()
+    })
   }
-
-  // 断开 WebSocket 连接
-  disconnectWebSocket()
-
-  // 清理重连定时器
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer)
-    reconnectTimer = null
-  }
-
-  // 重置状态
-  wsConnected.value = false
-  wsError.value = null
-  logs.value = []
-  reconnectAttempts = 0
-
-  // 清理 DOM 引用
-  logContainer.value = null
 })
 
 // Watch for auto scroll changes
 watch(autoScroll, () => {
   if (autoScroll.value) {
-    scrollToBottom()
+    nextTick(() => {
+      scrollToBottom()
+    })
+  }
+})
+
+// Watch logs array to auto-scroll if enabled
+watch(() => logs.value.length, () => {
+  if (autoScroll.value) {
+    nextTick(() => {
+      scrollToBottom()
+    })
   }
 })
 </script>
@@ -279,7 +105,7 @@ watch(autoScroll, () => {
           </div>
 
           <button
-            @click="toggleConnection"
+            @click="logsStore.toggleConnection"
             class="btn"
             :class="wsConnected ? 'btn-secondary' : 'btn-primary'"
           >
@@ -289,7 +115,7 @@ watch(autoScroll, () => {
             {{ wsConnected ? '断开' : '连接' }}
           </button>
 
-          <button @click="clearLogs" class="btn btn-secondary">
+          <button @click="logsStore.clearLogs" class="btn btn-secondary">
             <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>

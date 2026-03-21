@@ -17,6 +17,7 @@ import * as subController from './admin/subController.js';
 import * as backupController from './admin/backupController.js';
 import * as pluginsController from './admin/pluginsController.js';
 import * as terminalController from './admin/terminalController.js';
+import * as cryptoController from './admin/cryptoController.js';
 import { PROJECT_ROOT } from '../utils/pathHelper.js';
 
 // 配置常量
@@ -142,6 +143,9 @@ export default async function adminController(fastify, options) {
     fastify.get('/api/admin/routes', getRoutesInfo);
     fastify.get('/api/admin/docs', systemController.getApiDocs);
 
+    // ==================== 加解密 API ====================
+    fastify.post('/api/admin/crypto/decode', cryptoController.decode);
+
     // MCP 兼容层
     const ENABLE_MCP_COMPAT = process.env.ENABLE_MCP_COMPAT !== 'false';
     if (ENABLE_MCP_COMPAT) {
@@ -199,12 +203,15 @@ async function updateConfig(req, reply) {
             return reply.code(400).send({ error: 'Key is required' });
         }
 
-        if (!await fs.pathExists(CONFIG_PATH)) {
-            return reply.code(404).send({ error: 'Config file not found' });
+        let config = {};
+        if (await fs.pathExists(CONFIG_PATH)) {
+            const configContent = await fs.readFile(CONFIG_PATH, 'utf-8');
+            try {
+                config = JSON.parse(configContent);
+            } catch (e) {
+                // If it's malformed, start fresh
+            }
         }
-
-        const configContent = await fs.readFile(CONFIG_PATH, 'utf-8');
-        let config = JSON.parse(configContent);
 
         // 设置嵌套值
         const keys = key.split('.');
@@ -227,7 +234,16 @@ async function updateConfig(req, reply) {
         target[keys[keys.length - 1]] = parsedValue;
 
         // 写回文件
-        await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2));
+        try {
+            await fs.ensureDir(path.dirname(CONFIG_PATH));
+            await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2));
+        } catch (writeError) {
+            req.log.error(`[Admin Config] Failed to write config file: ${writeError.message}`);
+            return reply.code(500).send({ 
+                success: false, 
+                error: `保存配置失败 (可能是权限问题，如在 Vercel 等只读环境): ${writeError.message}` 
+            });
+        }
 
         return reply.send({
             success: true,

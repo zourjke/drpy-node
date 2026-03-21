@@ -8,6 +8,12 @@ const themeStore = useThemeStore()
 const route = useRoute()
 const isTerminalAvailable = ref(false)
 
+const goHome = () => {
+  if (window.confirm('确定要返回主页吗？')) {
+    window.location.href = '/'
+  }
+}
+
 onMounted(async () => {
   try {
     const res = await apiClient.get('/api/admin/terminal/status')
@@ -31,6 +37,7 @@ const baseMenuItems = [
   { path: '/subscription', name: 'subscription', icon: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10' },
   { path: '/plugins', name: 'plugins', icon: 'M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z' },
   { path: '/database', name: 'database', icon: 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4' },
+  { path: '/crypto', name: 'crypto', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z' },
   { path: '/backup', name: 'backup', icon: 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15' }
 ]
 
@@ -56,6 +63,7 @@ const menuNames = {
   subscription: '订阅管理',
   plugins: '插件管理',
   database: '数据库',
+  crypto: '加解密工具',
   backup: '备份恢复',
   terminal: '终端模拟'
 }
@@ -69,7 +77,11 @@ const menuNames = {
     ]"
   >
     <!-- Logo -->
-    <div class="flex items-center h-16 px-4 border-b border-gray-200 dark:border-gray-700 shrink-0">
+    <div 
+      class="flex items-center h-16 px-4 border-b border-gray-200 dark:border-gray-700 shrink-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+      @click="goHome"
+      title="返回主页"
+    >
       <div class="flex items-center gap-2">
         <img src="/drpys.png" alt="Logo" class="w-7 h-7 rounded-full" />
         <h1 class="text-lg font-bold text-primary-600 dark:text-primary-400 truncate">

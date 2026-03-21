@@ -98,6 +98,12 @@ const routes = [
         next('/')
       }
     }
+  },
+  {
+    path: '/crypto',
+    name: 'crypto',
+    component: () => import('../views/Crypto.vue'),
+    meta: { title: '加解密工具' }
   }
 ]
 

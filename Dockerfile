@@ -3,7 +3,7 @@
 FROM node:20-alpine AS builder
 
 # 安装git
-RUN apk add --no-cache git
+RUN apk add --no-cache git make python3 py3-pip build-base
 
 # 如果您需要配置git以使用特定的HTTP版本，请确保这是出于必要和安全考虑
 RUN git config --global http.version HTTP/1.1
@@ -13,6 +13,8 @@ WORKDIR /app
 
 # 克隆GitHub仓库到工作目录
 RUN git clone https://github.com/hjdhnx/drpy-node.git .
+RUN sed -i 's|const shell = os.platform() === '"'"'win32'"'"' ? '"'"'powershell.exe'"'"' : '"'"'bash'"'"'|const shell = os.platform() === '"'"'win32'"'"' ? '"'"'powershell.exe'"'"' : '"'"'sh'"'"'|' controllers/admin/terminalController.js
+RUN rm -rf drpy-node-admin drpy-node-bundle drpy-node-mcp drpy2-quickjs
 
 # 安装项目依赖项和puppeteer
 RUN yarn && yarn add puppeteer
@@ -36,6 +38,7 @@ COPY --from=builder /tmp/drpys/. /app
 RUN cp /app/.env.development /app/.env && \
     rm -f /app/.env.development && \
     sed -i 's|^VIRTUAL_ENV[[:space:]]*=[[:space:]]*$|VIRTUAL_ENV=/app/.venv|' /app/.env && \
+    sed -i 's|^ENABLE_TERMINAL=0|ENABLE_TERMINAL=1|' /app/.env && \
     echo '{"ali_token":"","ali_refresh_token":"","quark_cookie":"","uc_cookie":"","bili_cookie":"","thread":"10","enable_dr2":"1","enable_py":"2"}' > /app/config/env.json
 
 # 安装Node.js运行时（如果需要的话，这里已经假设在构建器阶段中安装了所有必要的Node.js依赖项）

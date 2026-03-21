@@ -1,5 +1,11 @@
+<script>
+export default {
+  name: 'TerminalView'
+}
+</script>
+
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { ref, onMounted, onUnmounted, onActivated, onDeactivated, nextTick, watch } from 'vue'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
@@ -15,9 +21,12 @@ let term = null
 let fitAddon = null
 let ws = null
 let resizeObserver = null
+let isInitialized = false
 
 // Initialize Terminal
 const initTerminal = () => {
+  if (isInitialized) return;
+  isInitialized = true;
   term = new Terminal({
     cursorBlink: true,
     fontSize: 14,
@@ -194,15 +203,32 @@ const preventGlobalScroll = () => {
 }
 
 onMounted(() => {
-  window.addEventListener('scroll', preventGlobalScroll, { passive: true })
-  
   wsUrl.value = getDefaultWsUrl()
   
   nextTick(() => {
     initTerminal()
     // Auto connect on load
-    connect()
+    if (!isConnected.value) {
+      connect()
+    }
   })
+})
+
+onActivated(() => {
+  window.addEventListener('scroll', preventGlobalScroll, { passive: true })
+  
+  // Terminal re-fit when component becomes visible again
+  if (fitAddon) {
+    nextTick(() => {
+      try {
+        fitAddon.fit()
+      } catch(e) {}
+    })
+  }
+})
+
+onDeactivated(() => {
+  window.removeEventListener('scroll', preventGlobalScroll)
 })
 
 onUnmounted(() => {

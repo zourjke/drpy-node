@@ -43,6 +43,14 @@ export default defineConfig(({ command, mode }) => {
           changeOrigin: true,
           ws: true
         },
+        '/encoder': {
+          target: 'http://localhost:5757',
+          changeOrigin: true
+        },
+        '/decoder': {
+          target: 'http://localhost:5757',
+          changeOrigin: true
+        },
         // WebSocket 代理
         '/ws': {
           target: 'ws://localhost:5757',

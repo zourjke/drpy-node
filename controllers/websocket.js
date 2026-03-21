@@ -6,6 +6,7 @@
 
 import {validateBasicAuth} from "../utils/api_validate.js";
 import {toBeijingTime} from "../utils/datetime-format.js";
+import util from 'util';
 
 // WebSocket 客户端管理
 const wsClients = new Set();
@@ -64,21 +65,36 @@ function broadcastToClients(message) {
 function interceptConsole() {
     const createInterceptor = (level, originalMethod) => {
         return function (...args) {
-            // 调用原始方法
+            // 1. 调用原始方法，保证终端输出不受影响
             originalMethod.apply(console, args);
 
-            // 广播到所有 WebSocket 客户端
+            // 2. 如果有 WebSocket 客户端连接，才处理广播
             if (wsClients.size > 0) {
-                const message = {
-                    type: 'console',
-                    level: level,
-                    timestamp: toBeijingTime(new Date()),
-                    content: args.map(arg =>
-                        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-                    ).join(' ')
-                };
+                // 3. 将极其耗时的序列化和网络 IO 丢给 setImmediate
+                // 这样当前 API 请求的执行（比如循环 200 次 console.log）不会被阻塞
+                setImmediate(() => {
+                    try {
+                        const content = args.map(arg => {
+                            if (typeof arg === 'string') return arg;
+                            try {
+                                return typeof arg === 'object' ? util.inspect(arg, { depth: 1 }) : String(arg);
+                            } catch (e) {
+                                return String(arg);
+                            }
+                        }).join(' ');
 
-                broadcastToClients(JSON.stringify(message));
+                        const msg = JSON.stringify({
+                            type: 'console',
+                            level,
+                            timestamp: toBeijingTime(new Date()),
+                            content
+                        });
+
+                        broadcastToClients(msg);
+                    } catch (error) {
+                        originalConsole.error('Log formatting error:', error);
+                    }
+                });
             }
         };
     };

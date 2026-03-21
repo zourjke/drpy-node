@@ -21,6 +21,7 @@ const configDescriptions = {
   pikpak_token: 'PikPak Token',
   xun_username: '迅雷账号',
   xun_password: '迅雷密码',
+  xun_auth: '迅雷认证令牌(登录成功自动获取)',
   yun_account: '移动云盘账号',
   yun_cookie: '移动云盘 Cookie',
 
@@ -80,7 +81,7 @@ const configDescriptions = {
 }
 
 const groups = {
-  '云盘配置': ['quark_cookie', 'quark_token_cookie', 'uc_cookie', 'uc_token_cookie', 'ali_token', 'ali_refresh_token', 'pikpak_token', 'cloud_account', 'cloud_password', 'cloud_cookie', 'yun_account', 'yun_cookie', 'pan_passport', 'pan_password', 'pan_auth', 'xun_username', 'xun_password'],
+  '云盘配置': ['quark_cookie', 'quark_token_cookie', 'uc_cookie', 'uc_token_cookie', 'ali_token', 'ali_refresh_token', 'pikpak_token', 'cloud_account', 'cloud_password', 'cloud_cookie', 'yun_account', 'yun_cookie', 'pan_passport', 'pan_password', 'pan_auth', 'xun_username', 'xun_password','xun_auth'],
   '视频平台': ['bili_cookie', 'baidu_cookie'],
   'AI 服务': ['spark_ai_authKey', 'deepseek_apiKey', 'kimi_apiKey', 'now_ai', 'sparkBotObject'],
   '代理设置': ['enable_system_proxy', 'PROXY_AUTH', 'play_proxy_mode', 'play_local_proxy_type', 'enable_doh', 'allow_forward', 'allow_ftp_cache_clear', 'allow_webdav_cache_clear'],
