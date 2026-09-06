@@ -1,0 +1,7 @@
+{
+  "sources": [
+    "https://raw.githubusercontent.com/hjdhnx/drpy-plugin-dist/main/market.json",
+    "config/market-plugins.json"
+  ],
+  "ghProxy": "https://github.catvod.com/"
+}
