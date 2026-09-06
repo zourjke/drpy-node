@@ -5,6 +5,7 @@
   quickSearch: 0,
   title: '推送',
   '类型': '影视',
+  logo: 'https://t8.baidu.com/it/u=1965666717,2988743161&fm=193',
   lang: 'ds'
 })
 */
@@ -76,9 +77,9 @@ var rule = {
         log('[push_agent] decode input:', input);
         if (input.indexOf('@') > -1) {
             let list = input.split('@');
-            // log(list);
+            //log(list);
             for (let i = 0; i < list.length; i++) {
-                if (/pan.quark.cn|drive.uc.cn|www.alipan.com|www.aliyundrive.com|cloud.189.cn|yun.139.com|caiyun.139.com|www.123684.com|www.123865.com|www.123912.com|www.123pan.com|www.123pan.cn|www.123592.com|pan.baidu.com|pan.xunlei.com/.test(list[i])) {
+                if (/pan.quark.cn|drive.uc.cn|www.alipan.com|www.aliyundrive.com|cloud.189.cn|yun.139.com|caiyun.139.com|123684.com|123865.com|123912.com|123pan.com|123pan.cn|123592.com|pan.baidu.com|pan.xunlei.com/.test(list[i])) {
                     if (/pan.quark.cn/.test(list[i])) {
                         playPans.push(list[i]);
                         const shareData = Quark.getShareData(list[i]);
@@ -165,7 +166,7 @@ var rule = {
                             playurls.push("资源已经失效，请访问其他资源")
                         }
                     }
-                    if (/www.123684.com|www.123865.com|www.123912.com|www.123pan.com|www.123pan.cn|www.123592.com/.test(list[i])) {
+                 /*   if (/www.123684.com|www.123865.com|www.123912.com|www.123pan.com|www.123pan.cn|www.123592.com/.test(list[i])) {
                         playPans.push(list[i]);
                         let shareData = await Pan.getShareData(list[i])
                         let videos = await Pan.getFilesByShareUrl(shareData)
@@ -177,6 +178,19 @@ var rule = {
                                 return v.FileName + '$' + list.join('*');
                             }).join('#'))
                         }
+                    }*/
+                    if(/123684.com|123865.com|123912.com|123pan.com|123pan.cn|123592.com/.test(list[i])) {
+                        playPans.push(list[i]);
+                        let shareData = await Pan.getShareData(list[i])
+                        let videos = await Pan.getFilesByShareUrl(shareData)
+                        Object.keys(videos).forEach(it => {
+                            playform.push('Pan123-' + it)
+                            const urls = videos[it].map(v => {
+                                const list = [v.ShareKey, v.FileId, v.S3KeyFlag, v.Size, v.Etag];
+                                return v.FileName + '$' + list.join('*');
+                            }).join('#');
+                            playurls.push(urls);
+                        })
                     }
                     if (/pan.baidu.com/.test(list[i])) {
                         let data = await Baidu2.getShareData(list[i])
@@ -203,7 +217,7 @@ var rule = {
                     playurls.push("推送" + '$' + list[i])
                 }
             }
-        } else if (/pan.quark.cn|drive.uc.cn|www.alipan.com|www.aliyundrive.com|cloud.189.cn|yun.139.com|caiyun.139.com|www.123684.com|www.123865.com|www.123912.com|www.123pan.com|www.123pan.cn|www.123592.com|pan.baidu.com|pan.xunlei.com/.test(input)) {
+        } else if (/pan.quark.cn|drive.uc.cn|www.alipan.com|www.aliyundrive.com|cloud.189.cn|yun.139.com|caiyun.139.com|123684.com|123865.com|123912.com|123pan.com|123pan.cn|123592.com|pan.baidu.com|pan.xunlei.com/.test(input)) {
             if (/pan.quark.cn/.test(input)) {
                 playPans.push(input);
                 const shareData = Quark.getShareData(input);
@@ -290,7 +304,7 @@ var rule = {
                     playurls.push("资源已经失效，请访问其他资源")
                 }
             }
-            if (/www.123684.com|www.123865.com|www.123912.com|www.123pan.com|www.123pan.cn|www.123592.com/.test(input)) {
+           /* if (/www.123684.com|www.123865.com|www.123912.com|www.123pan.com|www.123pan.cn|www.123592.com/.test(input)) {
                 playPans.push(input);
                 let shareData = await Pan.getShareData(input)
                 let videos = await Pan.getFilesByShareUrl(shareData)
@@ -302,7 +316,20 @@ var rule = {
                         return v.FileName + '$' + list.join('*');
                     }).join('#'));
                 }
-            }
+            }*/
+            if(/123684.com|123865.com|123912.com|123pan.com|123pan.cn|123592.com/.test(input)) {
+                        playPans.push(input);
+                        let shareData = await Pan.getShareData(input)
+                        let videos = await Pan.getFilesByShareUrl(shareData)
+                        Object.keys(videos).forEach(it => {
+                            playform.push('Pan123-' + it)
+                            const urls = videos[it].map(v => {
+                                const list = [v.ShareKey, v.FileId, v.S3KeyFlag, v.Size, v.Etag];
+                                return v.FileName + '$' + list.join('*');
+                            }).join('#');
+                            playurls.push(urls);
+                        })
+                    }   
             if (/pan.baidu.com/.test(input)) {
                 let data = await Baidu2.getShareData(input)
                 let vod_content_add = [vod.vod_content];
@@ -401,12 +428,39 @@ var rule = {
             }
             if (flag.startsWith('UC-')) {
                 console.log("UC网盘解析开始");
-                if (!UCDownloadingCache[ids[1]]) {
-                    const down = await UC.getDownload(ids[0], ids[1], ids[2], ids[3], true);
-                    if (down) UCDownloadingCache[ids[1]] = down;
+                // 默认无限模式：通过分享数据直接获取OSS直链，不转存，需防盗链header
+                // 仅当无限失败时，有CK才用转存兜底
+                let link = [];
+                try {
+                    link = await UC.getUrl(ids[0], ids[1], ids[2], ids[3]);
+                } catch (e) { console.log('UC 无限模式异常:', e.message); }
+                const ucHeaders = (link[0] && link[0].headers) || {};
+                if (link.length > 0) {
+                    // 无限成功：返回OSS直链 + 防盗链header（referer 末尾加\）
+                    link.forEach(item => {
+                        if (item !== undefined) {
+                            urls.push("无限" + item.name, item.url);
+                        }
+                    });
+                    const directHeaders = Object.assign({}, ucHeaders, { 'Referer': (ucHeaders['Referer'] || ucHeaders['referer'] || '') + '\\' });
+                    return {parse: 0, url: urls, header: directHeaders}
                 }
-                const downCache = UCDownloadingCache[ids[1]];
-                return await UC.getLazyResult(downCache, mediaProxyUrl)
+                // 无限失败：有CK时转存兜底，转存直链自带token无需header
+                if (UC.cookie || UC.token) {
+                    try {
+                        if (!UCDownloadingCache[ids[1]]) {
+                            const down = await UC.getDownload(ids[0], ids[1], ids[2], ids[3], true);
+                            if (down) UCDownloadingCache[ids[1]] = down;
+                        }
+                        const downCache = UCDownloadingCache[ids[1]];
+                        const downList = Array.isArray(downCache) ? downCache : (downCache ? [downCache] : []);
+                        downList.forEach((it) => {
+                            const u = it.url || it.download_url;
+                            if (u) { urls.push(it.name || '原画', u + "#isVideo=true##fastPlayMode##threads=10#"); }
+                        });
+                    } catch (e) { console.log('UC 转存模式异常:', e.message); }
+                }
+                return {parse: 0, url: urls}
             }
             if (flag.startsWith('Ali-')) {
                 const transcoding_flag = {
@@ -454,7 +508,7 @@ var rule = {
                     url: urls
                 }
             }
-            if (flag.startsWith('Pan123-')) {
+        /*    if (flag.startsWith('Pan123-')) {
                 log('盘123解析开始')
                 const url = await Pan.getDownload(ids[0], ids[1], ids[2], ids[3], ids[4])
                 urls.push("原画", url)
@@ -466,7 +520,22 @@ var rule = {
                     parse: 0,
                     url: urls
                 }
-            }
+            }*/
+            if(flag.startsWith('Pan123-')) {
+                log('盘123解析开始')
+                const url = await 
+                Pan.getDownloadUrl(ids[0],ids[1],ids[2],ids[3],ids[4])
+                urls.push("原画",url)
+                urls.push("猫画", `http://127.0.0.1:5575/proxy?thread=${ENV.get('thread') || 6}&chunkSize=256&url=` + encodeURIComponent(url));
+                // let data = await Pan.getLiveTranscoding(ids[0],ids[1],ids[2],ids[3],ids[4])
+                // data.forEach((item) => {
+                //     urls.push(item.name,item.url)
+                 // })
+                  return {
+                      parse: 0,
+                      url: urls
+                  }
+            }  
             if (flag.startsWith('Baidu-')) {
                 log('百度网盘开始解析')
                 //App原画不转存
@@ -512,3 +581,4 @@ var rule = {
         }
     },
 }
+
