@@ -20,8 +20,9 @@ import {getContentType, getMimeType} from "../utils/mime-type.js";
 import {getParsesDict, getSitesMap, pathLib, executeParse, es6_extend_code, req_extend_code} from "../utils/file.js";
 import {getFirstLetter} from "../utils/pinyin-tool.js";
 import {reqs} from "../utils/req.js";
+import {fastify} from "../controllers/fastlogger.js";
 import {toBeijingTime} from "../utils/datetime-format.js"
-import "../utils/random-http-ua.js";
+import "../utils/random-http-ua.js"; // UMD：挂载 globalThis.randomUa（沙箱经全局解析，无 default 导出，不可默认导入）
 import {initializeGlobalDollar, rootRequire} from "../libs_drpy/moduleLoader.js";
 import {base64Decode, base64Encode, md5, rc4, rc4_decode, rc4Decrypt, rc4Encrypt} from "../libs_drpy/crypto-util.js";
 import template from '../libs_drpy/template.js'
@@ -73,6 +74,23 @@ const {
 const CACHE_OPTIONS = {
     max: 100,
     ttl: 1000 * 60 * 10, // 10分钟
+    // 驱逐时给值对象一次自我清理机会 (L15)：
+    // 网盘实例等重资源若实现了 destroy()/dispose()（如 BaiduHandler 退出定时器登记），
+    // 在此触发；未实现则静默跳过，不改变既有对象的行为。
+    dispose(value) {
+        try {
+            if (value && typeof value === 'object') {
+                for (const method of ['destroy', 'dispose']) {
+                    if (typeof value[method] === 'function') {
+                        Promise.resolve(value[method]()).catch(() => {});
+                        break;
+                    }
+                }
+            }
+        } catch {
+            // 清理失败不影响缓存驱逐主流程
+        }
+    },
 };
 // const moduleCache = new Map();
 // const ruleObjectCache = new Map();
@@ -426,12 +444,28 @@ export async function init(filePath, env = {}, refresh) {
         // const moduleObject = deepCopy(sandbox.rule);
         const rule = sandbox.rule;
         if (moduleExt) { // 传了参数才覆盖rule参数，否则取rule内置
-            // log('moduleExt:', moduleExt);
+            // rule.params 必须保留为 公网可访问URL（env.jsonUrl 拼接）：
+            // 许多脚本（如直播转点播[合]）会用 rule.params 作为基础URL，通过 urljoin 拼接对外返回的 图片/子源URL
+            // 如果 rule.params 改成 localhost，这些对外URL也会变成 localhost，播放器无法访问 = 回归Bug
             if (moduleExt.startsWith('../json')) {
                 rule.params = urljoin(env.jsonUrl, moduleExt.slice(8));
             } else {
-                rule.params = moduleExt
+                rule.params = moduleExt;
             }
+        }
+        // 将"自请求回环映射"注入到沙箱全局，在 request 扩展里做透明转换：
+        // 当脚本调用 request(url) 请求指向自己服务的 URL 时，自动走 localhost 回环
+        // —— 保留 NAT 回环规避能力（be4c690 原本想解决的问题：内网穿透/NAT发夹转换失败）
+        // 注：放在 moduleExt 外面对所有脚本生效，即使脚本硬编码了自己的公网域名请求自己的资源也会受益
+        try {
+            const _localPort = fastify.server && fastify.server.address ? fastify.server.address().port : null;
+            const _reqHost = (env.requestHost || '').replace(/\/+$/, '');
+            if (_reqHost && _localPort) {
+                context._SELF_REQ_HOST = _reqHost;
+                context._SELF_LOOPBACK = `http://localhost:${_localPort}`;
+            }
+        } catch (e) {
+            log(`[init] 注入自请求回环映射失败: ${e.message}`);
         }
         // 模板继承逻辑处理
         await handleTemplateInheritance(rule, context);
