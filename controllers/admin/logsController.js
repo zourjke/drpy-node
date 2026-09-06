@@ -75,7 +75,8 @@ async function streamLogs(socket, lines) {
 
         // 发送现有日志
         for (const line of lastLines) {
-            if (socket.readyState === WebSocket.OPEN) {
+            // fix: 原引用未导入的 WebSocket.OPEN（恒 ReferenceError）；ws.OPEN 数值为 1
+            if (socket.readyState === 1) {
                 socket.send(JSON.stringify({
                     type: 'log',
                     timestamp: Date.now(),
