@@ -1,0 +1,160 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "drpyS (drpy-node) API",
+    "description": "drpyS 影视/听书/漫画/小说源服务端接口文档。\n\n- **协议接口**（源接口、代理、解析、验证码代理）：供各类壳子/源调用，`/api/{module}` 通过 `pwd` 参数鉴权（未设置密码时免鉴权）。\n- **后台管理 API**（`/api/admin/*`）：HTTP Basic Auth 鉴权，点击右上角 Authorize 输入凭证后即可在线调试。\n\n本文档由路由 schema + 本文件（static 基础配置与虚拟路径条目）经 @fastify/swagger 生成。\n\n详细说明见仓库 `docs/apidoc.md` 与 `docs/admin_api.md`。",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {"url": "/", "description": "当前实例"}
+  ],
+  "tags": [
+    {"name": "协议接口", "description": "T4 模块数据、模块代理、解析等对外协议"},
+    {"name": "验证码代理", "description": "captcha-bypass 插件透明代理（按插件名判定可用性，未运行返回 503）"},
+    {"name": "系统管理", "description": "健康检查、重启、路由与文档信息"},
+    {"name": "日志", "description": "系统日志读取"},
+    {"name": "配置管理", "description": "env.json 配置读写、环境变量、版本"},
+    {"name": "源管理", "description": "爬虫源列表、校验、模板与内置库"},
+    {"name": "文件管理", "description": "项目文件浏览/读写/删除（受安全路径保护）"},
+    {"name": "数据库", "description": "SQLite 只读查询"},
+    {"name": "订阅管理", "description": "public/sub 订阅文件管理"},
+    {"name": "备份恢复", "description": "备份配置与执行"},
+    {"name": "插件管理", "description": ".plugins.js 插件配置与运行时控制"},
+    {"name": "插件市场", "description": "市场源聚合、安装/更新/卸载（异步任务）"},
+    {"name": "加解密", "description": "数据解密工具"},
+    {"name": "更新日志", "description": "docs/changelog/ 目录驱动的版本更新记录"}
+  ],
+  "security": [
+    {"basicAuth": []}
+  ],
+  "components": {
+    "securitySchemes": {
+      "basicAuth": {
+        "type": "http",
+        "scheme": "basic",
+        "description": "后台管理凭证（与 /apps/ 页面登录相同）"
+      }
+    }
+  },
+  "paths": {
+    "/captcha/ocr": {
+      "post": {
+        "tags": ["验证码代理"],
+        "summary": "OCR 文字/算术识别",
+        "description": "透传 captcha-bypass 插件。图片支持 Base64（dataURL）、图片 URL、multipart 文件三种形式。响应为插件原样 JSON：{code:0, data:{code:识别结果}, msg}；插件不可用时 503。",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {"type": "string", "enum": ["text", "math"], "description": "text 文字 / math 算术"},
+                  "bg": {"type": "string", "description": "背景图：base64 dataURL 或图片 URL"}
+                },
+                "required": ["type", "bg"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {"description": "插件原样 JSON"},
+          "503": {"description": "插件未安装或未运行：{code:-1, msg}"}
+        }
+      }
+    },
+    "/captcha/detect": {
+      "post": {
+        "tags": ["验证码代理"],
+        "summary": "目标检测（滑块缺口）",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {"type": "string", "enum": ["detect", "match"]},
+                  "bg": {"type": "string"},
+                  "thumb": {"type": "string", "description": "type=match 时必填"}
+                },
+                "required": ["type", "bg"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {"description": "插件原样 JSON"},
+          "503": {"description": "插件未安装或未运行：{code:-1, msg}"}
+        }
+      }
+    },
+    "/captcha/rotate": {
+      "post": {
+        "tags": ["验证码代理"],
+        "summary": "旋转验证码识别",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {"type": "string", "enum": ["single", "nox", "tiktok"]},
+                  "bg": {"type": "string"},
+                  "thumb": {"type": "string"}
+                },
+                "required": ["type", "bg"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {"description": "插件原样 JSON"},
+          "503": {"description": "插件未安装或未运行：{code:-1, msg}"}
+        }
+      }
+    },
+    "/captcha/slide": {
+      "post": {
+        "tags": ["验证码代理"],
+        "summary": "滑块验证码识别",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {"type": "string", "enum": ["match", "comparison"]},
+                  "thumb": {"type": "string"},
+                  "bg": {"type": "string"}
+                },
+                "required": ["type", "thumb", "bg"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {"description": "插件原样 JSON"},
+          "503": {"description": "插件未安装或未运行：{code:-1, msg}"}
+        }
+      }
+    },
+    "/captcha/health": {
+      "get": {
+        "tags": ["验证码代理"],
+        "summary": "插件健康检查透传",
+        "security": [],
+        "responses": {
+          "200": {"description": "插件健康信息"},
+          "503": {"description": "插件未安装或未运行：{code:-1, msg}"}
+        }
+      }
+    }
+  }
+}
