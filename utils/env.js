@@ -1,3 +1,4 @@
+import {log} from './log.js';
 import path from "path";
 import {fileURLToPath} from "url";
 import {existsSync, readFileSync, writeFileSync, unlinkSync} from "fs";
@@ -90,10 +91,10 @@ export const ENV = {
 
         // 传参时获取特定键
         if (cache.has(key)) {
-            // console.log(`从内存缓存中读取: ${key}`);
+            // log(`从内存缓存中读取: ${key}`);
             return cache.get(key);
         }
-        // console.log(`[get] 从文件中读取: ${key}`);
+        // log(`[get] 从文件中读取: ${key}`);
         // fastify.log.info(`[get] 从文件中读取: ${key}`);
         const envObj = this._readEnvFile();
         let value = envObj[key] || _value;
@@ -165,5 +166,13 @@ export const ENV = {
         } else {
             fastify.log.warn(`[delete] Key "${key}" does not exist in env file.`);
         }
+    },
+ 
+    /**
+     * 清除所有环境变量缓存
+     * 用于外部直接修改 env.json 后（如后台管理 updateConfig）同步缓存
+     */
+    clearCache() {
+        cache.clear();
     },
 };
