@@ -1,3 +1,5 @@
+import {log, logError} from '../utils/log.js';
+
 /**
  * 配置管理控制器
  *
@@ -10,6 +12,7 @@
  */
 
 import {readdirSync, readFileSync, writeFileSync, existsSync} from 'fs';
+import {getDisabledFilenameSet, setIndexRegenerator} from '../utils/sourceState.js';
 import {readFile} from 'fs/promises';
 import path from 'path';
 import * as drpyS from '../libs/drpyS.js';
@@ -83,7 +86,7 @@ function guessRuleType(baseName, ruleObject) {
  * @param {string} pwd - 访问密码
  * @returns {Promise<Object>} 包含sites数组和spider配置的对象
  */
-async function generateSiteJSON(options, requestHost, sub, pwd) {
+async function generateSiteJSON(options, requestHost, sub, pwd, {includeDisabled = false} = {}) {
     const jsDir = options.jsDir;
     const dr2Dir = options.dr2Dir;
     const pyDir = options.pyDir;
@@ -96,6 +99,9 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
 
     const files = readdirSync(jsDir);
     let valid_files = files.filter((file) => file.endsWith('.js') && !file.startsWith('_')); // 筛选出不是 "_" 开头的 .js 文件
+    // 停用源过滤（docs/source-toggle-design.md）：healthy=0 检测模式跳过，保证全源检测可见停用源
+    const disabledJs = includeDisabled ? null : getDisabledFilenameSet('spider/js');
+    if (disabledJs) valid_files = valid_files.filter((file) => !disabledJs.has(file));
     let sort_list = [];
     // 获取排序配置文件路径
     let sort_file = path.join(path.dirname(subFilePath), `./order_common.html`);
@@ -121,11 +127,11 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
         }
     }
     if (existsSync(sort_file)) {
-        console.log('sort_file:', sort_file);
+        log('sort_file:', sort_file);
         let sort_file_content = readFileSync(sort_file, 'utf-8');
-        // console.log(sort_file_content)
+        // log(sort_file_content)
         sort_list = sort_file_content.split('\n').filter(it => it.trim()).map(it => it.trim());
-        // console.log(sort_list);
+        // log(sort_list);
     }
     let sites = [];
 
@@ -135,23 +141,32 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
         if (existsSync(templateConfigPath)) {
             const templateContent = readFileSync(templateConfigPath, 'utf-8');
             const templateConfig = JSON.parse(templateContent);
-            sites = Object.entries(templateConfig).filter(([key]) => valid_files.includes(`${key}[模板].js`))
-                .flatMap(([key, config]) =>
-                    Object.entries(config)
-                        .filter(([name]) => name !== "示例")
-                        .map(([name]) => ({
-                            key: `drpyS_${name}_${key}`,
-                            name: `${name}[M](${key.replace('App', '').toUpperCase()})`,
-                            type: 4,
-                            api: `${requestHost}/api/${key}[模板]${pwd ? `?pwd=${pwd}` : ''}`,
-                            searchable: 1,
-                            filterable: 1,
-                            quickSearch: 0,
-                            ext: `../json/App模板配置.json$${name}`
-                        })));
+            sites = [];
+            for (const [key, config] of Object.entries(templateConfig)) {
+                if (!valid_files.includes(`${key}[模板].js`)) continue;
+                let tplLogo = '';
+                try {
+                    const tplHeader = await FileHeaderManager.readHeader(path.join(jsDir, `${key}[模板].js`));
+                    tplLogo = (tplHeader && tplHeader.logo) || '';
+                } catch (e) {}
+                for (const [name] of Object.entries(config)) {
+                    if (name === "示例") continue;
+                    sites.push({
+                        key: `drpyS_${name}_${key}`,
+                        name: `${name}[M](${key.replace('App', '').toUpperCase()})`,
+                        type: 4,
+                        api: `${requestHost}/api/${key}[模板]${pwd ? `?pwd=${pwd}` : ''}`,
+                        logo: tplLogo,
+                        searchable: 1,
+                        filterable: 1,
+                        quickSearch: 0,
+                        ext: `../json/App模板配置.json$${name}`
+                    });
+                }
+            }
         }
     } catch (e) {
-        console.error('读取App模板配置失败:', e.message);
+        logError('读取App模板配置失败:', e.message);
     }
     //以上为自定义APP[模板]配置自动添加代码
 
@@ -161,14 +176,14 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
     let isLoaded = await drpyS.isLoaded();
     let forceHeader = Number(process.env.FORCE_HEADER) || 0;
     let dr2ApiType = Number(process.env.DR2_API_TYPE) || 0; // 0 ds里的api 1壳子内置
-    // console.log('hide_adult:', ENV.get('hide_adult'));
-    if (ENV.get('hide_adult') === '1') {
+    // log('hide_adult:', ENV.get('hide_adult'));
+    if (ENV.get('hide_adult') === '1' || ENV.get('hide_adult') === '2') {
         valid_files = valid_files.filter(it => !(new RegExp('\\[[密]\\]|密+')).test(it));
     }
     let SitesMap = getSitesMap(configDir);
     let mubanKeys = Object.keys(SitesMap);
-    // console.log(SitesMap);
-    // console.log(mubanKeys);
+    // log(SitesMap);
+    // log(mubanKeys);
     // 排除模板后缀的DS源
     valid_files = valid_files.filter(it => !/^APP.*\[模板]\.js$/i.test(it));
     log(`开始生成ds的t4配置，jsDir:${jsDir},源数量: ${valid_files.length}`);
@@ -189,7 +204,7 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
                 // if (baseName.includes('抖音直播弹幕')) {
                 const filePath = path.join(jsDir, file);
                 const header = await FileHeaderManager.readHeader(filePath);
-                // console.log('ds header:', header);
+                // log('ds header:', header);
                 if (!header || forceHeader) {
                     try {
                         ruleObject = await drpyS.getRuleObject(filePath);
@@ -216,14 +231,14 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
                             ruleMeta.more = {mergeList: 1};
                         }
                     }
-                    // console.log('ds ruleMeta:', ruleMeta);
+                    // log('ds ruleMeta:', ruleMeta);
                     await FileHeaderManager.writeHeader(filePath, ruleMeta);
                 } else {
                     Object.assign(ruleMeta, header);
                 }
                 if (!isLoaded) {
                     const sizeInBytes = await FileHeaderManager.getFileSize(filePath, {humanReadable: true});
-                    console.log(`Loading RuleObject: ${filePath} fileSize:${sizeInBytes}`);
+                    log(`Loading RuleObject: ${filePath} fileSize:${sizeInBytes}`);
                 }
                 ruleMeta.title = enableRuleName ? ruleMeta.title || baseName : baseName;
 
@@ -271,9 +286,9 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
     const listener = {
         func: (param, id, error, result) => {
             if (error) {
-                console.error(`Error processing file ${id}:`, error.message);
+                logError(`Error processing file ${id}:`, error.message);
             } else {
-                // console.log(`Successfully processed file ${id}:`, result);
+                // log(`Successfully processed file ${id}:`, result);
             }
         },
         param: {}, // 外部参数可以在这里传入
@@ -286,8 +301,10 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
     if ((enable_dr2 === '1' || enable_dr2 === '2')) {
         const dr2_files = readdirSync(dr2Dir);
         let dr2_valid_files = dr2_files.filter((file) => file.endsWith('.js') && !file.startsWith('_')); // 筛选出不是 "_" 开头的 .js 文件
+        const disabledDr2 = includeDisabled ? null : getDisabledFilenameSet('spider/js_dr2');
+        if (disabledDr2) dr2_valid_files = dr2_valid_files.filter((file) => !disabledDr2.has(file));
         // log(dr2_valid_files);
-        console.log(`开始生成dr2配置，dr2Dir:${dr2Dir},源数量: ${dr2_valid_files.length}, 启用模式: ${enable_dr2 === '1' ? 'T3配置' : 'T4风格API配置'}`);
+        log(`开始生成dr2配置，dr2Dir:${dr2Dir},源数量: ${dr2_valid_files.length}, 启用模式: ${enable_dr2 === '1' ? 'T3配置' : 'T4风格API配置'}`);
 
         const dr2_tasks = dr2_valid_files.map((file) => {
             return {
@@ -301,7 +318,7 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
                     let ruleMeta = {...ruleObject};
                     const filePath = path.join(dr2Dir, file);
                     const header = await FileHeaderManager.readHeader(filePath);
-                    // console.log('dr2 header:', header);
+                    // log('dr2 header:', header);
                     if (!header || forceHeader) {
                         try {
                             ruleObject = await drpyS.getRuleObject(path.join(filePath));
@@ -328,14 +345,14 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
                                 ruleMeta.more = {mergeList: 1};
                             }
                         }
-                        // console.log('dr2 ruleMeta:', ruleMeta);
+                        // log('dr2 ruleMeta:', ruleMeta);
                         await FileHeaderManager.writeHeader(filePath, ruleMeta);
                     } else {
                         Object.assign(ruleMeta, header);
                     }
                     if (!isLoaded) {
                         const sizeInBytes = await FileHeaderManager.getFileSize(filePath, {humanReadable: true});
-                        console.log(`Loading RuleObject: ${filePath} fileSize:${sizeInBytes}`);
+                        log(`Loading RuleObject: ${filePath} fileSize:${sizeInBytes}`);
                     }
                     ruleMeta.title = enableRuleName ? ruleMeta.title || baseName : baseName;
 
@@ -425,6 +442,8 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
         const py_files = readdirSync(pyDir);
         const api_type = enable_py === '1' ? 3 : 4;
         let py_valid_files = py_files.filter((file) => file.endsWith('.py') && !file.startsWith('_') && !file.startsWith('base_')); // 筛选出不是 "_" 开头的 .py 文件
+        const disabledPy = includeDisabled ? null : getDisabledFilenameSet('spider/py');
+        if (disabledPy) py_valid_files = py_valid_files.filter((file) => !disabledPy.has(file));
         // log(py_valid_files);
         log(`开始生成python的T${api_type}配置，pyDir:${pyDir},源数量: ${py_valid_files.length}`);
 
@@ -451,7 +470,7 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
                     let ruleMeta = {...ruleObject};
                     const filePath = path.join(pyDir, file);
                     const header = await FileHeaderManager.readHeader(filePath);
-                    // console.log('py header:', header);
+                    // log('py header:', header);
                     if (!header || forceHeader) {
                         const fileContent = await readFile(filePath, 'utf-8');
                         const title = extractNameFromCode(fileContent) || baseName;
@@ -459,14 +478,14 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
                             title: title,
                             lang: 'hipy',
                         });
-                        // console.log('py ruleMeta:', ruleMeta);
+                        // log('py ruleMeta:', ruleMeta);
                         await FileHeaderManager.writeHeader(filePath, ruleMeta);
                     } else {
                         Object.assign(ruleMeta, header);
                     }
                     if (!isLoaded) {
                         const sizeInBytes = await FileHeaderManager.getFileSize(filePath, {humanReadable: true});
-                        console.log(`Loading RuleObject: ${filePath} fileSize:${sizeInBytes}`);
+                        log(`Loading RuleObject: ${filePath} fileSize:${sizeInBytes}`);
                     }
                     ruleMeta.title = enableRuleName ? ruleMeta.title || baseName : baseName;
 
@@ -478,7 +497,7 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
                         let name = `${ruleMeta.title}(hipy)`;
                         fileSites.push({key, name, ext});
                     } else if (isMuban && SitesMap.hasOwnProperty(baseName) && Array.isArray(SitesMap[baseName])) {
-                        // console.log(SitesMap[baseName]);
+                        // log(SitesMap[baseName]);
                         SitesMap[baseName].forEach((it) => {
                             let key = `hipy_py_${it.alias}`;
                             let name = `${it.alias}(hipy)`;
@@ -490,7 +509,7 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
                                     _ext = parseExt(_ext);
                                 }
                             }
-                            console.log(`[HIPY-${baseName}] alias name: ${name},typeof _ext:${typeof _ext},_ext: ${logExt(_ext)}`);
+                            log(`[HIPY-${baseName}] alias name: ${name},typeof _ext:${typeof _ext},_ext: ${logExt(_ext)}`);
                             fileSites.push({key, name, ext: _ext});
                         });
                     } else if (isMuban) {
@@ -524,11 +543,13 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
 
     // 根据用户是否启用php源去生成对应配置
     const enable_php = ENV.get('enable_php', '1');
-    console.log('isPhpAvailable:', isPhpAvailable);
+    log('isPhpAvailable:', isPhpAvailable);
     if ((enable_php === '1' && isPhpAvailable) || enable_php === '2') {
         const php_files = readdirSync(phpDir);
         const api_type = enable_php === '2' ? 3 : 4;
         let php_valid_files = php_files.filter((file) => file.endsWith('.php') && !file.startsWith('_') && !['config.php', 'index.php', 'test_runner.php'].includes(file));
+        const disabledPhp = includeDisabled ? null : getDisabledFilenameSet('spider/php');
+        if (disabledPhp) php_valid_files = php_valid_files.filter((file) => !disabledPhp.has(file));
         log(`开始生成php的T${api_type}配置，phpDir:${phpDir},源数量: ${php_valid_files.length}`);
 
         const php_tasks = php_valid_files.map((file) => {
@@ -585,6 +606,8 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
         const cat_files = readdirSync(catDir);
         const api_type = enable_cat === '1' ? 3 : 4;
         let cat_valid_files = cat_files.filter((file) => file.endsWith('.js') && !file.startsWith('_')); // 筛选出不是 "_" 开头的 .py 文件
+        const disabledCat = includeDisabled ? null : getDisabledFilenameSet('spider/catvod');
+        if (disabledCat) cat_valid_files = cat_valid_files.filter((file) => !disabledCat.has(file));
         // log(py_valid_files);
         log(`开始生成catvod的T${api_type}配置，catDir:${catDir},源数量: ${cat_valid_files.length}`);
 
@@ -613,7 +636,7 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
                     let ruleMeta = {...ruleObject};
                     const filePath = path.join(catDir, file);
                     const header = await FileHeaderManager.readHeader(filePath);
-                    // console.log('py header:', header);
+                    // log('py header:', header);
                     if (!header || forceHeader) {
                         const fileContent = await readFile(filePath, 'utf-8');
                         const title = extractNameFromCode(fileContent) || baseName;
@@ -621,14 +644,14 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
                             title: title,
                             lang: 'cat',
                         });
-                        // console.log('py ruleMeta:', ruleMeta);
+                        // log('py ruleMeta:', ruleMeta);
                         await FileHeaderManager.writeHeader(filePath, ruleMeta);
                     } else {
                         Object.assign(ruleMeta, header);
                     }
                     if (!isLoaded) {
                         const sizeInBytes = await FileHeaderManager.getFileSize(filePath, {humanReadable: true});
-                        console.log(`Loading RuleObject: ${filePath} fileSize:${sizeInBytes}`);
+                        log(`Loading RuleObject: ${filePath} fileSize:${sizeInBytes}`);
                     }
                     ruleMeta.title = enableRuleName ? ruleMeta.title || baseName : baseName;
 
@@ -650,7 +673,7 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
                                     _ext = parseExt(_ext);
                                 }
                             }
-                            console.log(`[CAT-${baseName}] alias name: ${name},typeof _ext:${typeof _ext},_ext: ${logExt(_ext)}`);
+                            log(`[CAT-${baseName}] alias name: ${name},typeof _ext:${typeof _ext},_ext: ${logExt(_ext)}`);
                             fileSites.push({key, name, ext: _ext});
                         });
                     } else {
@@ -733,10 +756,10 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
         }
     }
     // 青少年模式再次处理自定义别名的情况
-    if (ENV.get('hide_adult') === '1') {
+    if (ENV.get('hide_adult') === '1' || ENV.get('hide_adult') === '2') {
         sites = sites.filter(it => !(new RegExp('\\[[密]\\]|密+')).test(it.name));
     }
-    // console.log('sort_list:', sort_list);
+    // log('sort_list:', sort_list);
     sites = naturalSort(sites, 'name', sort_list);
     return {sites, spider: link_jar};
 }
@@ -750,7 +773,10 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
  * @returns {Promise<Object>} 包含parses数组的对象
  */
 async function generateParseJSON(jxDir, requestHost) {
-    let enable_self_jx = ENV.get('enable_self_jx', '0') === '1';
+    let _enable_self_jx = ENV.get('enable_self_jx', '0');
+    // 兼容字符串 "1"/"true"、数字 1、布尔 true 等多种存储格式（admin.js updateConfig 的 JSON.parse 会把 "1" 转成数字 1）
+    let enable_self_jx = ['1', 1, true, 'true'].includes(_enable_self_jx);
+    // log(`[generateParseJSON] enable_self_jx=${enable_self_jx} (raw=${JSON.stringify(_enable_self_jx)}), jxDir=${jxDir}`);
     let parses = [];
     let sorted_parses = [];
     const jx_dict = getParsesDict(requestHost);
@@ -816,9 +842,9 @@ async function generateParseJSON(jxDir, requestHost) {
         const listener = {
             func: (param, id, error, result) => {
                 if (error) {
-                    console.error(`Error processing file ${id}:`, error.message);
+                    logError(`Error processing file ${id}:`, error.message);
                 } else {
-                    // console.log(`Successfully processed file ${id}:`, result);
+                    // log(`Successfully processed file ${id}:`, result);
                 }
             },
             param: {}, // 外部参数可以在这里传入
@@ -847,7 +873,7 @@ function generateLivesJSON(requestHost) {
         let public_url = urljoin(requestHost, 'public/');
         live_url = urljoin(public_url, live_url);
     }
-    // console.log('live_url:', live_url);
+    // log('live_url:', live_url);
     if (live_url) {
         lives.push(
             {
@@ -898,9 +924,68 @@ function getSubs(subFilePath) {
         const subContent = readFileSync(subFilePath, 'utf-8');
         subs = JSON.parse(subContent)
     } catch (e) {
-        console.log(`读取订阅失败:${e.message}`);
+        log(`读取订阅失败:${e.message}`);
     }
     return subs
+}
+
+/**
+ * 组装完整配置对象并写入缓存（index.json；writeCustom 时同步写 custom.json）
+ * 供 /config 路由与「停用/启用/删除源后的异步重建钩子」共用。
+ * @param {Object} options 路由 options（各引擎目录与缓存文件路径）
+ * @param {string} requestHost 请求根地址
+ * @param {Object} siteJSON generateSiteJSON 的返回
+ * @param {Object} opts {healthy, writeCustom}
+ * @returns {Promise<Object>} 组装后的配置对象
+ */
+async function buildAndCacheConfig(options, requestHost, siteJSON, {healthy = '', writeCustom = false} = {}) {
+    // 处理healthy参数，过滤失效源
+    if (healthy === '1') {
+        const reportPath = path.join(options.rootDir, 'data', 'source-checker', 'report.json');
+        if (existsSync(reportPath)) {
+            try {
+                const reportContent = readFileSync(reportPath, 'utf-8');
+                const reportData = JSON.parse(reportContent);
+
+                // 获取失效源的key列表
+                const failedKeys = new Set();
+                if (reportData.sources && Array.isArray(reportData.sources)) {
+                    reportData.sources.forEach(source => {
+                        if (source.status === 'error') {
+                            failedKeys.add(source.key);
+                        }
+                    });
+                }
+
+                // 过滤掉失效的源
+                if (failedKeys.size > 0) {
+                    siteJSON.sites = siteJSON.sites.filter(site => !failedKeys.has(site.key));
+                    log(`Filtered out ${failedKeys.size} failed sources, remaining: ${siteJSON.sites.length}`);
+                }
+            } catch (error) {
+                logError('Failed to process health report:', error.message);
+            }
+        }
+    }
+
+    // 生成各类配置数据
+    const parseJSON = await generateParseJSON(options.jxDir, requestHost);
+    const livesJSON = generateLivesJSON(requestHost);
+    const playerJSON = generatePlayerJSON(options.configDir, requestHost);
+    // 合并所有配置数据
+    const configObj = {sites_count: siteJSON.sites.length, ...playerJSON, ...siteJSON, ...parseJSON, ...livesJSON};
+    if (!configObj.spider) {
+        configObj.spider = playerJSON.spider
+    }
+    // 写入配置文件（Vercel环境除外）
+    if (!process.env.VERCEL) { // Vercel 环境不支持写文件，关闭此功能
+        const configStr = JSON.stringify(configObj, null, 2);
+        writeFileSync(options.indexFilePath, configStr, 'utf8'); // 写入 index.json
+        if (writeCustom) {
+            writeFileSync(options.customFilePath, configStr, 'utf8'); // 写入 custom.json
+        }
+    }
+    return configObj;
 }
 
 /**
@@ -912,6 +997,14 @@ function getSubs(subFilePath) {
  * @param {Function} done - 完成回调函数
  */
 export default (fastify, options, done) => {
+
+    // 注册停用/启用源后的缓存配置异步重建实现（utils/sourceState.js 触发，见 docs/source-toggle-design.md §3.3）
+    setIndexRegenerator(async () => {
+        const requestHost = `http://127.0.0.1:${options.PORT}`;
+        const siteJSON = await generateSiteJSON(options, requestHost, null, '', {includeDisabled: false});
+        await buildAndCacheConfig(options, requestHost, siteJSON, {healthy: '', writeCustom: false});
+        return true;
+    });
 
     /**
      * 获取索引配置接口
@@ -946,13 +1039,13 @@ export default (fastify, options, done) => {
             const protocol = request.headers['x-forwarded-proto'] || (request.socket.encrypted ? 'https' : 'http');  // http 或 https
             const hostname = request.hostname;  // 主机名，不包含端口
             const port = request.socket.localPort;  // 获取当前服务的端口
-            console.log(`cfg_path:${cfg_path},port:${port}`);
+            log(`cfg_path:${cfg_path},port:${port}`);
             // 判断是否为外部访问（非本地访问）
             let not_local = cfg_path.startsWith('/1') || cfg_path.startsWith('/index');
             // 根据访问类型生成对应的主机地址
             let requestHost = not_local ? `${protocol}://${hostname}` : `http://127.0.0.1:${options.PORT}`; // 动态生成根地址
             let requestUrl = not_local ? `${protocol}://${hostname}${request.url}` : `http://127.0.0.1:${options.PORT}${request.url}`; // 动态生成请求链接
-            // console.log('requestUrl:', requestUrl);
+            // log('requestUrl:', requestUrl);
             // if (cfg_path.endsWith('.js')) {
             //     if (cfg_path.includes('index.js')) {
             //         // return reply.sendFile('index.js', path.join(options.rootDir, 'data/cat'));
@@ -973,14 +1066,14 @@ export default (fastify, options, done) => {
             //         // content = jinja.render(content, {config_url: requestUrl.replace(cfg_path, `/1?sub=all&healthy=1&pwd=${process.env.API_PWD || ''}`)});
             //         content = content.replace('$config_url', requestUrl.replace(cfg_path, `/1?sub=all&healthy=1&pwd=${process.env.API_PWD || ''}`));
             //         let contentHash = md5(content);
-            //         console.log('index.js contentHash:', contentHash);
+            //         log('index.js contentHash:', contentHash);
             //         return reply.type('text/plain;charset=utf-8').send(contentHash);
             //     } else if (cfg_path.includes('index.config.js')) {
             //         let content = readFileSync(path.join(options.rootDir, 'data/cat/index.config.js'), 'utf-8');
             //         // content = jinja.render(content, {config_url: requestUrl.replace(cfg_path, `/1?sub=all&healthy=1&pwd=${process.env.API_PWD || ''}`)});
             //         content = content.replace('$config_url', requestUrl.replace(cfg_path, `/1?sub=all&healthy=1&pwd=${process.env.API_PWD || ''}`));
             //         let contentHash = md5(content);
-            //         console.log('index.config.js contentHash:', contentHash);
+            //         log('index.config.js contentHash:', contentHash);
             //         return reply.type('text/plain;charset=utf-8').send(contentHash);
             //     }
             // }
@@ -1019,7 +1112,7 @@ export default (fastify, options, done) => {
                         let content = readFileSync(filePath, 'utf-8');
                         content = processContent(content, cfgPath, requestUrl);
                         const contentHash = md5(content);
-                        console.log(`${fileName} contentHash:`, contentHash);
+                        log(`${fileName} contentHash:`, contentHash);
                         return reply.type('text/plain;charset=utf-8').send(contentHash);
                     }
                 }
@@ -1036,7 +1129,7 @@ export default (fastify, options, done) => {
             if (sub_code) {
                 let subs = getSubs(options.subFilePath);
                 sub = subs.find(it => it.code === sub_code);
-                console.log('sub:', sub);
+                log('sub:', sub);
                 // 检查订阅码状态
                 if (sub && sub.status === 0) {
                     return reply.status(500).send({error: `此订阅码:【${sub_code}】已禁用`});
@@ -1048,55 +1141,10 @@ export default (fastify, options, done) => {
             }
 
             // 生成站点配置数据
-            let siteJSON = await generateSiteJSON(options, requestHost, sub, pwd);
+            let siteJSON = await generateSiteJSON(options, requestHost, sub, pwd, {includeDisabled: healthy === '0'});
 
-            // 处理healthy参数，过滤失效源
-            if (healthy === '1') {
-                const reportPath = path.join(options.rootDir, 'data', 'source-checker', 'report.json');
-                if (existsSync(reportPath)) {
-                    try {
-                        const reportContent = readFileSync(reportPath, 'utf-8');
-                        const reportData = JSON.parse(reportContent);
-
-                        // 获取失效源的key列表
-                        const failedKeys = new Set();
-                        if (reportData.sources && Array.isArray(reportData.sources)) {
-                            reportData.sources.forEach(source => {
-                                if (source.status === 'error') {
-                                    failedKeys.add(source.key);
-                                }
-                            });
-                        }
-
-                        // 过滤掉失效的源
-                        if (failedKeys.size > 0) {
-                            siteJSON.sites = siteJSON.sites.filter(site => !failedKeys.has(site.key));
-                            console.log(`Filtered out ${failedKeys.size} failed sources, remaining: ${siteJSON.sites.length}`);
-                        }
-                    } catch (error) {
-                        console.error('Failed to process health report:', error.message);
-                    }
-                }
-            }
-
-            // 生成各类配置数据
-            const parseJSON = await generateParseJSON(options.jxDir, requestHost);
-            const livesJSON = generateLivesJSON(requestHost);
-            const playerJSON = generatePlayerJSON(options.configDir, requestHost);
-            // 合并所有配置数据
-            const configObj = {sites_count: siteJSON.sites.length, ...playerJSON, ...siteJSON, ...parseJSON, ...livesJSON};
-            if (!configObj.spider) {
-                configObj.spider = playerJSON.spider
-            }
-            // console.log(configObj);
-            const configStr = JSON.stringify(configObj, null, 2);
-            // 写入配置文件（Vercel环境除外）
-            if (!process.env.VERCEL) { // Vercel 环境不支持写文件，关闭此功能
-                writeFileSync(options.indexFilePath, configStr, 'utf8'); // 写入 index.json
-                if (cfg_path === '/1') {
-                    writeFileSync(options.customFilePath, configStr, 'utf8'); // 写入 index.json
-                }
-            }
+            // 组装并落盘缓存配置（handler 与停用/启用后的异步重建钩子共用）
+            const configObj = await buildAndCacheConfig(options, requestHost, siteJSON, {healthy, writeCustom: cfg_path === '/1'});
             // 计算处理耗时并返回结果
             let t2 = (new Date()).getTime();
             let cost = t2 - t1;
