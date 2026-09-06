@@ -17,6 +17,7 @@
  * @since 1.0.0
  */
 
+import {log, logError} from '../log.js';
 import {reqs} from '../req.js';
 import {ENV} from '../env.js';
 import COOKIE from '../cookieManager.js';
@@ -24,6 +25,7 @@ import CryptoJS from "crypto-js";
 import {join} from 'path';
 import fs from 'fs';
 import {PassThrough} from 'stream';
+import {boundedCache} from '../bounded-cache.js';
 
 /**
  * 夸克网盘处理类
@@ -50,22 +52,22 @@ class QuarkHandler {
         };
         // API基础URL - 夸克网盘API服务地址
         this.apiUrl = 'https://drive.quark.cn/1/clouddrive/';
-        // 分享令牌缓存 - 缓存分享链接的访问令牌
-        this.shareTokenCache = {};
+        // 分享令牌缓存 - 缓存分享链接的访问令牌 (L11: 有界化，防只增不减)
+        this.shareTokenCache = boundedCache({max: 200});
         // 保存目录名称 - 在个人网盘中创建的保存目录名
         this.saveDirName = 'drpy';
         // 保存目录ID - 保存目录的唯一标识符
         this.saveDirId = null;
-        // 保存文件ID缓存 - 缓存已保存文件的ID映射
-        this.saveFileIdCaches = {};
+        // 保存文件ID缓存 - 缓存已保存文件的ID映射 (L11: 有界化)
+        this.saveFileIdCaches = boundedCache({max: 500});
         // 当前URL键 - 用于标识当前处理的URL
         this.currentUrlKey = '';
         // 缓存根目录 - 本地缓存文件的存储路径
         this.cacheRoot = (process.env['NODE_PATH'] || '.') + '/quark_cache';
         // 最大缓存大小 - 限制缓存文件的最大大小（100MB）
         this.maxCache = 1024 * 1024 * 100;
-        // URL头部缓存 - 缓存HTTP头部信息以提高性能
-        this.urlHeadCache = {};
+        // URL头部缓存 - 缓存HTTP头部信息以提高性能 (L11: 有界化)
+        this.urlHeadCache = boundedCache({max: 100});
         // 字幕文件扩展名 - 支持的字幕文件格式列表
         this.subtitleExts = ['.srt', '.ass', '.scc', '.stl', '.ttml'];
 
@@ -95,7 +97,7 @@ class QuarkHandler {
      * @returns {string} 夸克网盘Cookie字符串
      */
     get cookie() {
-        // console.log('env.cookie.quark:',ENV.get('quark_cookie'));
+        // log('env.cookie.quark:',ENV.get('quark_cookie'));
         return ENV.get('quark_cookie');
     }
 
@@ -147,16 +149,16 @@ class QuarkHandler {
         //     let exp = JSON.parse(CryptoJS.enc.Base64.parse(this.token.split('.')[1]).toString(CryptoJS.enc.Utf8))
         //     let now = Math.floor(Date.now() / 1000)
         //     if (exp.exp < now) {
-        //         console.log('登录状态已过期,重新登录,请及时更换Token')
+        //         log('登录状态已过期,重新登录,请及时更换Token')
         //     } else {
-        //         console.log('登录成功，继续使用,可使用时间截止到：' + (new Date(exp.exp * 1000)).toLocaleString())
-        //         console.log('QuarkTV token获取成功：' + this.token)
+        //         log('登录成功，继续使用,可使用时间截止到：' + (new Date(exp.exp * 1000)).toLocaleString())
+        //         log('QuarkTV token获取成功：' + this.token)
         //     }
         // }
         if (this.cookie) {
-            console.log("cookie 获取成功");
+            log("cookie 获取成功");
         } else {
-            console.log("cookie 获取失败")
+            log("cookie 获取失败")
         }
     }
 
@@ -338,12 +340,12 @@ class QuarkHandler {
             method === 'get' ? await reqs.get(link, {
                 headers: headers,
             }).catch((err) => {
-                console.error(err.message);
+                logError(err.message);
                 return err.response || {status: 500, data: {}};
             }) : await reqs.post(link, data, {
                 headers: headers,
             }).catch((err) => {
-                console.error(err.message);
+                logError(err.message);
                 return err.response || {status: 500, data: {}};
             });
         const leftRetry = retry || 3;
@@ -353,7 +355,7 @@ class QuarkHandler {
             if (puus) {
                 if (cookie.match(/__puus=([^;]+)/)[1] !== puus[1]) {
                     cookie = cookie.replace(/__puus=[^;]+/, `__puus=${puus[1]}`);
-                    console.log('[quark] api:更新cookie:', cookie);
+                    log('[quark] api:更新cookie:', cookie);
                     ENV.set('quark_cookie', cookie);
                 }
             }
@@ -387,7 +389,7 @@ class QuarkHandler {
                 filelist: listData.data.list.map((v) => v.fid),
                 exclude_fids: [],
             });
-            // console.log(del);
+            // log(del);
         }
     }
 
@@ -429,7 +431,7 @@ class QuarkHandler {
                 dir_path: '',
                 dir_init_lock: false,
             });
-            console.log(create);
+            log(create);
             if (create.data && create.data.fid) {
                 this.saveDirId = create.data.fid;
             }
@@ -649,18 +651,18 @@ class QuarkHandler {
         const cookieResDataSelf = cookieSelfRes.headers;
         const resCookie = cookieResDataSelf['set-cookie'];
         if (!resCookie) {
-            console.log(`${from}自动更新夸克 cookie: 没返回新的cookie`);
+            log(`${from}自动更新夸克 cookie: 没返回新的cookie`);
             return
         }
         const cookieObject = COOKIE.parse(resCookie);
-        // console.log(cookieObject);
+        // log(cookieObject);
         if (cookieObject.__puus) {
             const oldCookie = COOKIE.parse(nowCookie);
             const newCookie = COOKIE.stringify({
                 __pus: oldCookie.__pus,
                 __puus: cookieObject.__puus,
             });
-            console.log(`${from}自动更新夸克 cookie: ${newCookie}`);
+            log(`${from}自动更新夸克 cookie: ${newCookie}`);
             ENV.set('quark_cookie', newCookie);
         }
     }
@@ -687,16 +689,16 @@ class QuarkHandler {
                 'referer': 'https://pan.quark.cn/',
                 'Cookie': low_cookie
             };
-            // console.log('low_url:', low_url);
-            // console.log('low_cookie:', low_cookie);
+            // log('low_url:', low_url);
+            // log('low_cookie:', low_cookie);
             const test_result = await this.testSupport(low_url, low_headers);
-            // console.log(test_result);
+            // log(test_result);
             if (!test_result[0]) {
                 try {
                     await this.refreshQuarkCookie('getLiveTranscoding');
                 } catch (e) {
-                    console.log(`getLiveTranscoding:自动刷新夸克cookie失败:${e.message}`);
-                    console.error(e);
+                    log(`getLiveTranscoding:自动刷新夸克cookie失败:${e.message}`);
+                    logError(e);
                 }
             }
             return transcoding.data.video_list;
@@ -834,7 +836,7 @@ class QuarkHandler {
                     try {
                         await this.refreshQuarkCookie('getDownload');
                     } catch (e) {
-                        console.log(`getDownload:自动刷新UC cookie失败:${e.message}`)
+                        log(`getDownload:自动刷新UC cookie失败:${e.message}`)
                     }
                     return video
                 }
@@ -880,7 +882,7 @@ class QuarkHandler {
                     try {
                         await this.refreshQuarkCookie('getDownload');
                     } catch (e) {
-                        console.log(`getDownload:自动刷新UC cookie失败:${e.message}`)
+                        log(`getDownload:自动刷新UC cookie失败:${e.message}`)
                     }
                     return video
                 }
@@ -952,14 +954,14 @@ class QuarkHandler {
         //                 "cookie": low_cookie,
         //                 "User-Agent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) quark-cloud-drive/2.5.20 Chrome/100.0.4896.160 Electron/18.3.5.4-b478491100 Safari/537.36 Channel/pckk_other_ch'
         //             };
-        //             // console.log('low_url:', low_url);
+        //             // log('low_url:', low_url);
         //             const test_result = await this.testSupport(low_url, low_headers);
-        //             // console.log('test_result:', test_result);
+        //             // log('test_result:', test_result);
         //             if (!test_result[0]) {
         //                 try {
         //                     await this.refreshQuarkCookie('getDownload');
         //                 } catch (e) {
-        //                     console.log(`getDownload:自动刷新UC cookie失败:${e.message}`)
+        //                     log(`getDownload:自动刷新UC cookie失败:${e.message}`)
         //                 }
         //             }
         //             video.push({
@@ -984,14 +986,14 @@ class QuarkHandler {
         //             "cookie": low_cookie,
         //             "User-Agent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) quark-cloud-drive/2.5.20 Chrome/100.0.4896.160 Electron/18.3.5.4-b478491100 Safari/537.36 Channel/pckk_other_ch'
         //         };
-        //         // console.log('low_url:', low_url);
+        //         // log('low_url:', low_url);
         //         const test_result = await this.testSupport(low_url, low_headers);
-        //         // console.log('test_result:', test_result);
+        //         // log('test_result:', test_result);
         //         if (!test_result[0]) {
         //             try {
         //                 await this.refreshQuarkCookie('getDownload');
         //             } catch (e) {
-        //                 console.log(`getDownload:自动刷新UC cookie失败:${e.message}`)
+        //                 log(`getDownload:自动刷新UC cookie失败:${e.message}`)
         //             }
         //         }
         //         return down.data[0];
@@ -1090,8 +1092,8 @@ class QuarkHandler {
 
             .catch((err) => {
 
-                // console.error(err);
-                console.error('[testSupport] error:', err.message);
+                // logError(err);
+                logError('[testSupport] error:', err.message);
 
                 return err.response || {status: 500, data: {}};
 
@@ -1118,7 +1120,7 @@ class QuarkHandler {
             return [isSupport, resp.headers];
 
         } else {
-            console.log('[testSupport] resp.status:', resp.status);
+            log('[testSupport] resp.status:', resp.status);
             return [false, null];
         }
 
@@ -1170,331 +1172,9 @@ class QuarkHandler {
 
         } catch (error) {
 
-            console.error(error);
+            logError(error);
 
         }
-
-    }
-
-
-    async chunkStream(inReq, outResp, url, urlKey, headers, option) {
-
-        urlKey = urlKey || CryptoJS.enc.Hex.stringify(CryptoJS.MD5(url)).toString();
-
-        if (this.currentUrlKey !== urlKey) {
-
-            this.delAllCache(urlKey);
-
-            this.currentUrlKey = urlKey;
-
-        }
-
-        if (!this.urlHeadCache[urlKey]) {
-
-            const [isSupport, urlHeader] = await this.testSupport(url, headers);
-
-            if (!isSupport || !urlHeader['content-length']) {
-
-                outResp.redirect(url);
-
-                return;
-
-            }
-
-            this.urlHeadCache[urlKey] = urlHeader;
-
-        }
-
-        let exist = true;
-
-        await fs.promises.access(join(this.cacheRoot, urlKey)).catch((_) => (exist = false));
-
-        if (!exist) {
-
-            await fs.promises.mkdir(join(this.cacheRoot, urlKey), {recursive: true});
-
-        }
-
-        const contentLength = parseInt(this.urlHeadCache[urlKey]['content-length']);
-
-        let byteStart = 0;
-
-        let byteEnd = contentLength - 1;
-
-        const streamHeader = {};
-
-        if (inReq.headers.range) {
-
-            const ranges = inReq.headers.range.trim().split(/=|-/);
-
-            if (ranges.length > 2 && ranges[2]) {
-
-                byteEnd = parseInt(ranges[2]);
-
-            }
-
-            byteStart = parseInt(ranges[1]);
-
-            Object.assign(streamHeader, this.urlHeadCache[urlKey]);
-
-            streamHeader['content-length'] = (byteEnd - byteStart + 1).toString();
-
-            streamHeader['content-range'] = `bytes ${byteStart}-${byteEnd}/${contentLength}`;
-
-            outResp.code(206);
-
-        } else {
-
-            Object.assign(streamHeader, this.urlHeadCache[urlKey]);
-
-            outResp.code(200);
-
-        }
-
-        option = option || {chunkSize: 1024 * 256, poolSize: 5, timeout: 1000 * 10};
-
-        const chunkSize = option.chunkSize;
-
-        const poolSize = option.poolSize;
-
-        const timeout = option.timeout;
-
-        let chunkCount = Math.ceil(contentLength / chunkSize);
-
-        let chunkDownIdx = Math.floor(byteStart / chunkSize);
-
-        let chunkReadIdx = chunkDownIdx;
-
-        let stop = false;
-
-        const dlFiles = {};
-
-        for (let i = 0; i < poolSize && i < chunkCount; i++) {
-
-            new Promise((resolve) => {
-
-                (async function doDLTask(spChunkIdx) {
-
-                    if (stop || chunkDownIdx >= chunkCount) {
-
-                        resolve();
-
-                        return;
-
-                    }
-
-                    if (spChunkIdx === undefined && (chunkDownIdx - chunkReadIdx) * chunkSize >= this.maxCache) {
-
-                        setTimeout(doDLTask, 5);
-
-                        return;
-
-                    }
-
-                    const chunkIdx = spChunkIdx || chunkDownIdx++;
-
-                    const taskId = `${inReq.id}-${chunkIdx}`;
-
-                    try {
-
-                        const dlFile = join(this.cacheRoot, urlKey, `${inReq.id}-${chunkIdx}.p`);
-
-                        let exist = true;
-
-                        await fs.promises.access(dlFile).catch((_) => (exist = false));
-
-                        if (!exist) {
-
-                            const start = chunkIdx * chunkSize;
-
-                            const end = Math.min(contentLength - 1, (chunkIdx + 1) * chunkSize - 1);
-
-                            console.log(inReq.id, chunkIdx);
-
-                            const dlResp = await reqs.get(url, {
-
-                                responseType: 'stream',
-
-                                timeout: timeout,
-
-                                headers: Object.assign(
-                                    {
-
-                                        Range: `bytes=${start}-${end}`,
-
-                                    },
-
-                                    headers,
-                                ),
-
-                            });
-
-                            const dlCache = join(this.cacheRoot, urlKey, `${inReq.id}-${chunkIdx}.dl`);
-
-                            const writer = fs.createWriteStream(dlCache);
-
-                            const readTimeout = setTimeout(() => {
-
-                                writer.destroy(new Error(`${taskId} read timeout`));
-
-                            }, timeout);
-
-                            const downloaded = new Promise((resolve) => {
-
-                                writer.on('finish', async () => {
-
-                                    if (stop) {
-
-                                        await fs.promises.rm(dlCache).catch((e) => console.error(e));
-
-                                    } else {
-
-                                        await fs.promises.rename(dlCache, dlFile).catch((e) => console.error(e));
-
-                                        dlFiles[taskId] = dlFile;
-
-                                    }
-
-                                    resolve(true);
-
-                                });
-
-                                writer.on('error', async (e) => {
-
-                                    console.error(e);
-
-                                    await fs.promises.rm(dlCache).catch((e1) => console.error(e1));
-
-                                    resolve(false);
-
-                                });
-
-                            });
-
-                            dlResp.data.pipe(writer);
-
-                            const result = await downloaded;
-
-                            clearTimeout(readTimeout);
-
-                            if (!result) {
-
-                                setTimeout(() => {
-
-                                    doDLTask(chunkIdx);
-
-                                }, 15);
-
-                                return;
-
-                            }
-
-                        }
-
-                        setTimeout(doDLTask, 5);
-
-                    } catch (error) {
-
-                        console.error(error);
-
-                        setTimeout(() => {
-
-                            doDLTask(chunkIdx);
-
-                        }, 15);
-
-                    }
-
-                })();
-
-            });
-
-        }
-
-
-        outResp.headers(streamHeader);
-
-        const stream = new PassThrough();
-
-        new Promise((resolve) => {
-
-            let writeMore = true;
-
-            (async function waitReadFile() {
-
-                try {
-
-                    if (chunkReadIdx >= chunkCount || stop) {
-
-                        stream.end();
-
-                        resolve();
-
-                        return;
-
-                    }
-
-                    if (!writeMore) {
-
-                        setTimeout(waitReadFile, 5);
-
-                        return;
-
-                    }
-
-                    const taskId = `${inReq.id}-${chunkReadIdx}`;
-
-                    if (!dlFiles[taskId]) {
-
-                        setTimeout(waitReadFile, 5);
-
-                        return;
-
-                    }
-
-                    const chunkByteStart = chunkReadIdx * chunkSize;
-
-                    const chunkByteEnd = Math.min(contentLength - 1, (chunkReadIdx + 1) * chunkSize - 1);
-
-                    const readFileStart = Math.max(byteStart, chunkByteStart) - chunkByteStart;
-
-                    const dlFile = dlFiles[taskId];
-
-                    delete dlFiles[taskId];
-
-                    const fd = await fs.promises.open(dlFile, 'r');
-
-                    const buffer = Buffer.alloc(chunkByteEnd - chunkByteStart - readFileStart + 1);
-
-                    await fd.read(buffer, 0, chunkByteEnd - chunkByteStart - readFileStart + 1, readFileStart);
-
-                    await fd.close().catch((e) => console.error(e));
-
-                    await fs.promises.rm(dlFile).catch((e) => console.error(e));
-                    writeMore = stream.write(buffer);
-                    if (!writeMore) {
-                        stream.once('drain', () => {
-                            writeMore = true;
-                        });
-                    }
-                    chunkReadIdx++;
-                    setTimeout(waitReadFile, 5);
-                } catch (error) {
-                    setTimeout(waitReadFile, 5);
-                }
-            })();
-        });
-        stream.on('close', async () => {
-            Object.keys(dlFiles).forEach((reqKey) => {
-                if (reqKey.startsWith(inReq.id)) {
-                    fs.rm(dlFiles[reqKey], {recursive: true}, () => {
-                    });
-                    delete dlFiles[reqKey];
-                }
-            });
-            stop = true;
-        });
-        return stream;
 
     }
 }
