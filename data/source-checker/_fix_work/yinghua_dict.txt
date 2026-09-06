@@ -1,8 +1,0 @@
-    二级: {
-        title: 'h1&&Text',
-        img: '.detail_pic .tc_img&&data-original',
-        desc: '.module-info-tag&&Text',
-        content: '.module-info-introduction&&Text',
-        tabs: '.play-list-group-switch-item',
-        lists: '.play-list-group-content:eq(#id) li'
-    },
