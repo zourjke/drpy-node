@@ -105,11 +105,18 @@ abstract class BaseSpider {
 
     /**
      * 代理请求 (可选)
+     *
+     * 返回五元组 [code, mediaType, content, headers, toBytes]，与 ds 源 proxy_rule 协议对齐：
+     * - toBytes 缺省/0: content 为文本/字节，服务端全量返回（仅小体积内容）
+     * - toBytes=2: content 为 http(s) URL，服务端 302 重定向到 /mediaProxy 流式代理
+     *   （大文件/长视频推荐，headers 由服务端携带，规避播放器 302 丢自定义头）
+     * 详见 docs/t4api.md「代理接口与 toBytes 协议」章节
+     *
      * @param array $params
-     * @return mixed
+     * @return array 默认 404，避免上层空指针 500
      */
     public function localProxy($params) {
-        return null;
+        return [404, 'text/plain', 'not found'];
     }
 
     /**
@@ -123,6 +130,29 @@ abstract class BaseSpider {
     }
 
     // ================== 辅助方法 ==================
+
+    /**
+     * 把媒体直链包装为服务端 mediaProxy 流式代理地址（大文件/长视频专用）
+     *
+     * localProxy 返回写法：
+     *   return [302, 'text/html', $this->proxyMediaUrl($url, $headers, $params['__mediaProxy'] ?? ''), [], 2];
+     *
+     * $base 未注入（旧路由场景）时原样返回 $url，优雅降级为直连
+     * @param string $url 媒体直链
+     * @param array $headers 拉流所需自定义头（UA/Referer/Cookie 等），由服务端携带
+     * @param string $base mediaProxy 基址，取 localProxy 的 $params['__mediaProxy']
+     * @return string
+     */
+    public function proxyMediaUrl($url, array $headers = [], $base = '') {
+        if (!$base) {
+            return $url;
+        }
+        $qs = '?url=' . urlencode(base64_encode($url)) . '&form=base64&stream=1';
+        if ($headers) {
+            $qs .= '&header=' . urlencode(base64_encode(json_encode($headers, JSON_UNESCAPED_UNICODE)));
+        }
+        return $base . $qs;
+    }
 
     protected function pdfa($html, $rule) {
         return $this->htmlParser->pdfa($html, $rule);
