@@ -7,6 +7,8 @@ import fs from '../../utils/fsWrapper.js';
 import path from 'path';
 import mime from 'mime-types';
 import { PROJECT_ROOT } from '../../utils/pathHelper.js';
+import {safePath, findBlacklistedItem, DEFAULT_PATH_BLACKLIST} from '../../utils/pathGuard.js';
+import {isWritableCreatePath, isProtectedPath, isEditablePath, isDeletablePath, createTypeHint} from '../../utils/filePolicy.js';
 
 // 列出目录
 export async function listDirectory(req, reply) {
@@ -24,11 +26,15 @@ export async function listDirectory(req, reply) {
 
         const result = files.map(f => {
             const isDir = f.isDirectory();
+            const relPath = dirPath === '.' ? f.name : `${dirPath}/${f.name}`;
             return {
                 name: f.name,
-                path: dirPath === '.' ? f.name : `${dirPath}/${f.name}`,
+                path: relPath,
                 isDirectory: isDir,
-                size: isDir ? undefined : 0 // fs.stat is expensive to do for all files, so omit size here unless needed
+                size: isDir ? undefined : 0, // fs.stat is expensive to do for all files, so omit size here unless needed
+                protected: !isDir && isProtectedPath(relPath),
+                editable: !isDir && fs.existsSync(path.join(PROJECT_ROOT, relPath)) && isEditablePath(relPath),
+                deletable: !isDir && isDeletablePath(relPath),
             };
         });
 
@@ -59,7 +65,7 @@ export async function readFile(req, reply) {
 
         if (!filePath || !isSafePath(filePath)) {
             return reply.code(403).send({
-                error: '无效的文件路径'
+                error: pathRejectMessage(filePath, '读取')
             });
         }
 
@@ -124,11 +130,40 @@ export async function writeFile(req, reply) {
 
         if (!filePath || !isSafePath(filePath)) {
             return reply.code(403).send({
-                error: '无效的文件路径'
+                error: pathRejectMessage(filePath, '修改')
             });
         }
 
-        const fullPath = path.join(PROJECT_ROOT, filePath);
+        const relPath = filePath;
+        const fullPath = path.join(PROJECT_ROOT, relPath);
+        const exists = await fs.pathExists(fullPath);
+
+        // 新建/修改分别校验（docs/file-manage-design.md §3）：
+        // - 新建：仅白名单三处目录（根目录 json / config / json 下的 js|json）
+        // - 修改：维持现状范围不收紧（源编辑器保存依赖此路径），但 json/ 下框架 json 只读保护
+        //   （.txt/.m3u 数据文件豁免——设计明确其可编辑）
+        if (!exists) {
+            if (!isWritableCreatePath(relPath)) {
+                // 区分两种拒绝原因：托管目录内类型不符 vs 目录本身不允许新建
+                const dir = path.posix.dirname(relPath.replace(/\\/g, '/'));
+                const dirOk = /^\/?(config|json)(\/|$)/i.test(dir);
+                return reply.code(403).send({
+                    error: dirOk
+                        ? `不支持创建该类型的文件，${createTypeHint()}`
+                        : '该目录不允许创建文件（源文件请走源管理的上传入口）'
+                });
+            }
+        } else {
+            const norm = relPath.replace(/\\/g, '/');
+            const isFrameworkReadOnly = isProtectedPath(norm)
+                && norm.toLowerCase().startsWith('json/')
+                && !/\.(txt|m3u)$/i.test(norm);
+            if (isFrameworkReadOnly) {
+                return reply.code(403).send({
+                    error: '框架文件受保护，禁止修改'
+                });
+            }
+        }
 
         // 确保目录存在
         await fs.ensureDir(path.dirname(fullPath));
@@ -162,7 +197,20 @@ export async function deleteFile(req, reply) {
 
         if (!fp || !isSafePath(fp)) {
             return reply.code(403).send({
-                error: '无效的文件路径'
+                error: pathRejectMessage(fp, '删除')
+            });
+        }
+
+        // 删除范围收紧（docs/file-manage-design.md §3）：仅白名单内的用户自建/生成缓存文件可删，
+        // 框架保护文件 403 明确提示，范围外（spider/** 等）引导走源管理专用入口
+        if (!isDeletablePath(fp)) {
+            if (isProtectedPath(fp)) {
+                return reply.code(403).send({
+                    error: '框架文件受保护，不可删除'
+                });
+            }
+            return reply.code(403).send({
+                error: '该文件不允许通过文件管理删除（源文件请走源管理的删除入口）'
             });
         }
 
@@ -187,33 +235,19 @@ export async function deleteFile(req, reply) {
     }
 }
 
+// P2：路径安全校验收敛至 utils/pathGuard.js（原为本文件内的重复实现）
+const FILE_CONTROLLER_BLACKLIST = [
+    ...DEFAULT_PATH_BLACKLIST,
+    'package-lock.json',
+    'yarn.lock'
+];
+
 function isSafePath(filePath) {
-    if (!filePath || typeof filePath !== 'string') return false;
-    
-    // Prevent absolute paths from user input directly
-    if (path.isAbsolute(filePath)) return false;
+    return safePath(filePath, {blacklist: FILE_CONTROLLER_BLACKLIST});
+}
 
-    // Resolve full path and check if it is within CWD
-    const fullPath = path.resolve(PROJECT_ROOT, filePath);
-    const cwd = PROJECT_ROOT;
-    
-    // Ensure the resolved path is inside the current working directory
-    if (!fullPath.startsWith(cwd)) return false;
-
-    // Blacklist check for sensitive files/directories
-    const blacklist = [
-        'node_modules', 
-        'database.db', 
-        '.git', 
-        '.env',
-        'package-lock.json',
-        'yarn.lock'
-    ];
-    
-    // Check if any part of the relative path matches the blacklist
-    // We check against the relative path to avoid matching parts of CWD
-    const relativePath = path.relative(cwd, fullPath);
-    if (blacklist.some(item => relativePath.includes(item))) return false;
-
-    return true;
+// 403 提示区分两种拒绝原因：命中保护名单（如 .env/yarn.lock）给明确说明，其余才是路径无效
+function pathRejectMessage(filePath, action) {
+    const blocked = filePath && findBlacklistedItem(filePath, FILE_CONTROLLER_BLACKLIST);
+    return blocked ? `该文件受安全策略保护，禁止${action}` : '无效的文件路径';
 }
