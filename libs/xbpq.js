@@ -1,24 +1,30 @@
 /**
  * XBPQ (小白盘棋) 模块
- * 
+ *
+ * @deprecated 自 v2 重构起标记：内部 init 链路存在疑似坏死逻辑（对空对象调用 init），
+ * 该引擎从未稳定可用；因仍被 controllers/api.js 引擎注册表引用而暂保留，
+ * 计划下个大版本与路由一并下线。请勿基于此模块开发新功能。
+ *
  * 提供视频源规则的加载、缓存和执行功能
  * 支持首页、分类、详情、搜索、播放等核心功能
- * 
+ *
  * 主要功能：
  * - 规则文件的动态加载和缓存
  * - 视频源的各种操作接口
  * - 模块生命周期管理
- * 
+ *
  * @author drpy-node
  * @version 1.0.0
  */
 
+import {log} from '../utils/log.js';
 import {computeHash, deepCopy} from "../utils/utils.js";
 import {readFile} from "fs/promises";
+import {LRUCache} from 'lru-cache';
 import {md5} from "../libs_drpy/crypto-util.js";
 
-// 模块缓存，用于存储已加载的模块以提高性能
-const moduleCache = new Map();
+// 模块缓存，用于存储已加载的模块以提高性能（LRU 有界）
+const moduleCache = new LRUCache({max: 200, ttl: 1000 * 60 * 10});
 
 /**
  * 获取规则的JSON字符串表示
@@ -85,7 +91,7 @@ const init = async function (filePath, env = {}, refresh) {
         moduleCache.set(hashMd5, {moduleObject, hash: fileHash});
         return moduleObject;
     } catch (error) {
-        console.log(`Error in xbpq.init :${filePath}`, error);
+        log(`Error in xbpq.init :${filePath}`, error);
         throw new Error(`Failed to initialize module:${error.message}`);
     }
 }
