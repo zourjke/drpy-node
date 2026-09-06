@@ -1,25 +1,21 @@
+import {logError} from '../utils/log.js';
 import path from "path";
 import {readFile} from "fs/promises";
 import {fileURLToPath} from 'url';
 import {execFile} from 'child_process';
 import {promisify} from 'util';
-import {getSitesMap} from "../utils/sites-map.js";
-import {computeHash, deepCopy, getNowTime, urljoin} from "../utils/utils.js";
+import {LRUCache} from 'lru-cache';
+import {computeHash, deepCopy, getNowTime} from "../utils/utils.js";
 import {prepareBinary} from "../utils/binHelper.js";
 import {md5} from "../libs_drpy/crypto-util.js";
 import {fastify} from "../controllers/fastlogger.js";
-import { PROJECT_ROOT } from '../utils/pathHelper.js';
-// import dotenv from 'dotenv';
-//
-// dotenv.config({ path: path.join(PROJECT_ROOT, '.env.development') });
 
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const _config_path = path.join(__dirname, '../config');
 const _bridge_path = path.join(__dirname, '../spider/php/_bridge.php');
 
-// Cache for module objects
-const moduleCache = new Map();
+// Cache for module objects（LRU 有界，淘汰=下次重新 init，与 refresh 路径等价）
+const moduleCache = new LRUCache({max: 200, ttl: 1000 * 60 * 10});
 
 // Mapping from JS method names to PHP Spider method names
 const methodMapping = {
@@ -76,9 +72,12 @@ const callPhpMethod = async (filePath, methodName, env, ...args) => {
         const {stdout, stderr} = await execFileAsync(phpPath, cliArgs, {
             encoding: 'utf8',
             maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+            // 比 Node 侧 withTimeout(API_TIMEOUT) 多 5s 宽限：超时后 kill php 进程，
+            // 避免孤儿进程继续占用连接与内存（输家 rejection 由 with-timeout 的 noop 分支静默）
+            timeout: (parseInt(process.env.API_TIMEOUT || '20') + 5) * 1000,
+            killSignal: 'SIGTERM',
             env: {
                 ...process.env,
-                PYTHONIOENCODING: 'utf-8', // Just in case
                 // Add any PHP specific env vars if needed
             }
         });
@@ -86,7 +85,7 @@ const callPhpMethod = async (filePath, methodName, env, ...args) => {
         if (stderr) {
             // Log stderr but don't fail immediately unless stdout is empty or error
             // fastify.log.warn(`PHP Stderr: ${stderr}`);
-            console.error(`PHP Stderr: ${stderr}`);
+            logError(`PHP Stderr: ${stderr}`);
         }
 
         const result = json2Object(stdout.trim());
@@ -98,7 +97,7 @@ const callPhpMethod = async (filePath, methodName, env, ...args) => {
         return result;
 
     } catch (error) {
-        console.error(`Error calling PHP method ${methodName}:`, error);
+        logError(`Error calling PHP method ${methodName}:`, error);
         throw error;
     }
 };
@@ -122,13 +121,6 @@ const init = async function (filePath, env = {}, refresh) {
         const fileHash = computeHash(fileContent);
         const moduleName = path.basename(filePath, '.php'); // .php extension
         let moduleExt = env.ext || '';
-
-        // Logic for SitesMap and moduleExt (similar to hipy.js)
-        let SitesMap = getSitesMap(_config_path);
-        if (moduleExt && SitesMap[moduleName]) {
-            // ... logic for compressed ext ...
-            // Simplified for now, assuming plain string or handled by caller
-        }
 
         let hashMd5 = md5(filePath + '#php#' + moduleExt);
 
