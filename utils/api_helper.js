@@ -3,6 +3,7 @@
  * 提供文件监听、引擎选择等API相关的辅助功能
  * 支持热重载和多种引擎类型的动态选择
  */
+import {log, logError} from './log.js';
 import {watch} from 'fs';
 import path from 'path';
 
@@ -33,7 +34,7 @@ export function startJsonWatcher(ENGINES, jsonDir) {
 
                 // 设置新的防抖计时器，避免频繁触发
                 const timer = setTimeout(() => {
-                    console.log(`[HotReload] ${filename} changed, clearing cache...`);
+                    log(`[HotReload] ${filename} changed, clearing cache...`);
                     // 清除drpyS引擎的所有缓存
                     ENGINES.drpyS.clearAllCache();
                     // 清理已完成的计时器
@@ -48,9 +49,9 @@ export function startJsonWatcher(ENGINES, jsonDir) {
         // 允许监听器不阻止进程退出
         if (jsonWatcher.unref) jsonWatcher.unref();
 
-        // console.log(`start json file hot reload success，listening path: ${jsonDir}`);
+        // log(`start json file hot reload success，listening path: ${jsonDir}`);
     } catch (error) {
-        console.error('start json file listening failed with error:', error);
+        logError('start json file listening failed with error:', error);
     }
 }
 
