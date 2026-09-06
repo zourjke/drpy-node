@@ -3,6 +3,7 @@
  * 基于cheerio提供HTML和JSON解析功能，支持类似海阔视界的解析语法
  */
 
+import {log} from '../utils/log.js';
 import * as cheerio from 'cheerio';
 // import jsonpath from 'jsonpath';
 import {urljoin} from "../utils/utils.js";
@@ -37,10 +38,11 @@ class Jsoup {
      */
     constructor(MY_URL = '') {
         this.MY_URL = MY_URL;
-        this.pdfh_html = '';
+        // 独立缓存：pdfa 与 pdfh 各自缓存，避免互相覆盖导致缓存失效
         this.pdfa_html = '';
-        this.pdfh_doc = null;
         this.pdfa_doc = null;
+        this.pdfh_html = '';
+        this.pdfh_doc = null;
     }
 
     /**
@@ -193,13 +195,15 @@ class Jsoup {
         if (!html || !parse) return [];
         parse = this.parseHikerToJq(parse);
 
-        const doc = cheerio.load(html);
         if (PARSE_CACHE) {
             if (this.pdfa_html !== html) {
                 this.pdfa_html = html;
-                this.pdfa_doc = doc;
+                this.pdfa_doc = cheerio.load(html);
             }
+        } else {
+            this.pdfa_doc = cheerio.load(html);
         }
+        const doc = this.pdfa_doc;
 
         const parses = parse.split(' ');
         let ret = null;
@@ -208,10 +212,7 @@ class Jsoup {
             if (!ret) return [];
         }
 
-        const res = (ret?.toArray() ?? []).map((item) => {
-            const res_html = `${doc(item)}`;
-            return res_html ? res_html : '';
-        });
+        const res = (ret?.toArray() ?? []).map((item) => `${doc(item)}`);
         return res;
     }
 
@@ -227,7 +228,6 @@ class Jsoup {
     pdfl(html, parse, list_text, list_url, MY_URL) {
         if (!html || !parse) return [];
         parse = this.parseHikerToJq(parse, false);
-        const new_vod_list = [];
 
         const doc = cheerio.load(html);
         const parses = parse.split(' ');
@@ -237,15 +237,143 @@ class Jsoup {
             if (!ret) return [];
         }
 
+        // 尝试批量模式：全程只 cheerio.load 一次，避免每个列表项重复解析
+        const batchResult = this._pdflBatch(doc, ret, list_text, list_url, MY_URL);
+        if (batchResult !== null) return batchResult;
+
+        // 回退：原始逐元素模式（复杂选择器场景，行为与原版一致）
+        const new_vod_list = [];
         ret.each((_, element) => {
             const _html = `${doc(element)}`;
-            // new_vod_list.push(`${doc(element)}`);
             let _title = this.pdfh(_html, list_text);
             let _url = this.pd(_html, list_url, MY_URL);
             new_vod_list.push(`${_title}$${_url}`);
         });
 
         return new_vod_list;
+    }
+
+    /**
+     * pdfl 批量模式核心逻辑
+     * 策略：用 data-pdfl-batch 属性标记每个列表项索引 -> 全局 doc(sel) 查找
+     * -> closest('[data-pdfl-batch]') 定位所属列表项 -> 读属性值得索引
+     * 返回 null 表示选择器不可批量，需回退到逐元素模式
+     * @param {Object} doc cheerio文档对象
+     * @param {Object} ret 列表项集合
+     * @param {string} list_text 标题解析规则
+     * @param {string} list_url 链接解析规则
+     * @param {string} MY_URL 基础URL
+     * @returns {Array|null} 列表数据，null 表示不可批量
+     */
+    _pdflBatch(doc, ret, list_text, list_url, MY_URL) {
+        if (!MY_URL) MY_URL = this.MY_URL; // 与 pd 回退行为一致，确保 url 正确拼接 baseUrl
+        const ti = this._parseSubOpt(list_text);
+        const ui = this._parseSubOpt(list_url);
+        if ((!ti.canBatch && !ti.special) || (!ui.canBatch && !ui.special)) return null;
+
+        const TAG = 'data-pdfl-batch';
+        const TAG_SEL = '[' + TAG + ']';
+        const self = this;
+
+        // 1. 标记每个列表项的索引
+        ret.each((i, el) => {
+            doc(el).attr(TAG, '' + i);
+        });
+
+        // 2. 全局查找子元素 -> closest() 定位所属列表项 -> 按索引分组
+        function buildMap(batchSel) {
+            const map = {};
+            doc(batchSel).each((_, el) => {
+                const ancestor = doc(el).closest(TAG_SEL);
+                const idx = ancestor.attr(TAG);
+                if (idx !== undefined && idx !== null && idx !== '' && !(idx in map)) {
+                    map[idx] = el;
+                }
+            });
+            return map;
+        }
+
+        const textMap = ti.special ? null : buildMap(ti.batchSel);
+        const urlMap = ui.special ? null : buildMap(ui.batchSel);
+
+        // 3. 按列表项顺序构建结果
+        const results = [];
+        ret.each((i, el) => {
+            let t, u;
+            if (ti.special === 'Text') t = self.parseText(doc(el).text());
+            else if (ti.special === 'Html') t = doc(el).html() || '';
+            else { const tn = textMap[i]; t = tn ? self._applyOption(doc(tn), ti.opt, '') : ''; }
+            if (ui.special === 'Text') u = self.parseText(doc(el).text());
+            else if (ui.special === 'Html') u = doc(el).html() || '';
+            else { const un = urlMap[i]; u = un ? self._applyOption(doc(un), ui.opt, MY_URL) : ''; }
+            results.push(`${t}$${u}`);
+        });
+
+        // 4. 清理标记
+        ret.removeAttr(TAG);
+        return results;
+    }
+
+    /**
+     * 解析子选择器+选项，strip :eq(0)/:first 用于全局查找
+     * @param {string} s 子选择器规则
+     * @returns {Object} { opt, batchSel, canBatch } 或 { special } 或 { canBatch: false }
+     */
+    _parseSubOpt(s) {
+        if (s === 'Text' || s === 'body&&Text') return { special: 'Text' };
+        if (s === 'Html' || s === 'body&&Html') return { special: 'Html' };
+        let option;
+        if (this.contains(s, '&&')) {
+            const parts = s.split('&&');
+            option = parts.pop();
+            s = parts.join('&&');
+        }
+        s = this.parseHikerToJq(s, true);
+        const batchSel = s.replace(/:eq\(0\)/g, '').replace(/:first/g, '').trim();
+        if (!batchSel) return { canBatch: false };
+        const canBatch = !batchSel.match(/:eq\(|:lt|:gt|:last|:not|:even|:odd|:has|:contains|:matches|:empty|--/);
+        return { opt: option, batchSel, canBatch };
+    }
+
+    /**
+     * 选项处理逻辑（Text/Html/属性提取+URL拼接）
+     * 从 pdfh 中抽出，供 pdfh 和 _pdflBatch 共用
+     * @param {Object} ret cheerio结果对象
+     * @param {string} option 选项（Text/Html/属性名等）
+     * @param {string} baseUrl 基础URL
+     * @returns {string} 解析结果
+     */
+    _applyOption(ret, option, baseUrl) {
+        if (!option) return `${ret}`;
+        switch (option) {
+            case 'Text':
+                return ret ? this.parseText(ret.text()) : '';
+            case 'Html':
+                return ret ? ret.html() : '';
+            default:
+                const originalRet = ret.clone();
+                const options = option.split('||');
+                for (let opt of options) {
+                    let val = originalRet?.attr(opt) || '';
+                    // 处理style中的url
+                    if (this.contains(opt.toLowerCase(), 'style') && this.contains(val, 'url(')) {
+                        try {
+                            val = val.match(/url\((.*?)\)/)[1];
+                            val = val.replace(/^['"]|['"]$/g, '');
+                        } catch {
+                        }
+                    }
+                    // 自动拼接URL
+                    if (val && baseUrl) {
+                        const needAdd = this.test(URLJOIN_ATTR, opt) && !this.test(SPECIAL_URL, val);
+                        if (needAdd) {
+                            val = val.includes('http') ? val.slice(val.indexOf('http')) : urljoin(baseUrl, val);
+                        }
+                    }
+                    if (val) return val;
+                }
+                return '';
+        }
     }
 
     /**
@@ -258,13 +386,15 @@ class Jsoup {
     pdfh(html, parse, baseUrl = '') {
         if (!html || !parse) return '';
 
-        const doc = cheerio.load(html);
-        if (typeof PARSE_CACHE !== 'undefined' && PARSE_CACHE) {
-            if (this.pdfa_html !== html) {
-                this.pdfa_html = html;
-                this.pdfa_doc = doc;
+        if (PARSE_CACHE) {
+            if (this.pdfh_html !== html) {
+                this.pdfh_html = html;
+                this.pdfh_doc = cheerio.load(html);
             }
+        } else {
+            this.pdfh_doc = cheerio.load(html);
         }
+        const doc = this.pdfh_doc;
 
         // 处理特殊解析规则
         if (parse === 'body&&Text' || parse === 'Text') {
@@ -289,42 +419,7 @@ class Jsoup {
             if (!ret) return '';
         }
 
-        if (option) {
-            switch (option) {
-                case 'Text':
-                    ret = ret ? this.parseText(ret.text()) : '';
-                    break;
-                case 'Html':
-                    ret = ret ? ret.html() : '';
-                    break;
-                default:
-                    const originalRet = ret.clone();
-                    const options = option.split('||');
-                    for (const opt of options) {
-                        ret = originalRet?.attr(opt) || '';
-                        // 处理style中的url
-                        if (this.contains(opt.toLowerCase(), 'style') && this.contains(ret, 'url(')) {
-                            try {
-                                ret = ret.match(/url\((.*?)\)/)[1];
-                                ret = ret.replace(/^['"]|['"]$/g, '');
-                            } catch {
-                            }
-                        }
-                        // 自动拼接URL
-                        if (ret && baseUrl) {
-                            const needAdd = this.test(URLJOIN_ATTR, opt) && !this.test(SPECIAL_URL, ret);
-                            if (needAdd) {
-                                ret = ret.includes('http') ? ret.slice(ret.indexOf('http')) : urljoin(baseUrl, ret);
-                            }
-                        }
-                        if (ret) break;
-                    }
-            }
-        } else { // 增加返回字符串，禁止直接返回pq对象
-            ret = `${ret}`;
-        }
-
-        return ret;
+        return this._applyOption(ret, option, baseUrl);
     }
 
     /**
@@ -361,7 +456,7 @@ class Jsoup {
         try {
             html = typeof html === 'string' ? JSON.parse(html) : html;
         } catch {
-            console.log('字符串转 JSON 失败');
+            log('字符串转 JSON 失败');
             return '';
         }
 
