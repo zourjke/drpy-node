@@ -29,6 +29,7 @@
  * @version 1.0.0
  */
 
+import {log} from './log.js';
 import * as puppeteer from 'puppeteer'
 
 /**
@@ -46,9 +47,29 @@ class PuppeteerHelper {
     }
 
     /**
+     * 关闭并释放当前浏览器实例（L4 泄露治理）
+     * 历史上 gotoHtml/gotoCookie 每次 launch 都直接覆盖 this.browser，
+     * 旧 Chromium 进程既不 close 也无引用，形成孤儿进程累积；
+     * 现统一在新 launch 前调用本方法释放旧实例。
+     * @returns {Promise<void>}
+     */
+    async closeBrowser() {
+        const stale = this.browser;
+        this.browser = null;
+        this.page = null;
+        if (stale) {
+            try {
+                await stale.close();
+            } catch {
+                // 浏览器已退出/崩溃时忽略，保证清理路径不抛错
+            }
+        }
+    }
+
+    /**
      * 访问网页或发送HTTP请求
      * 支持普通页面访问和API请求两种模式
-     * 
+     *
      * @param {Object} config - 配置对象
      * @param {string} config.url - 目标URL
      * @param {boolean} [config.headless=true] - 是否无头模式
@@ -60,11 +81,11 @@ class PuppeteerHelper {
      * @param {Object} [config.data] - 请求数据
      * @param {Object} [config.options] - 页面访问选项
      * @returns {Promise<string>} 页面内容或响应文本
-     * 
+     *
      * @example
      * // 访问普通页面
      * const html = await helper.gotoHtml({url: 'https://example.com'});
-     * 
+     *
      * // 发送API请求
      * const data = await helper.gotoHtml({
      *   url: 'https://api.example.com/data',
@@ -80,6 +101,9 @@ class PuppeteerHelper {
             proxy = 'http://127.0.0.1:7897';
         }
         
+        // 释放上一次调用遗留的浏览器实例，再启动新实例（L4：杜绝孤儿 Chromium 累积）
+        await this.closeBrowser();
+
         // 启动浏览器实例
         this.browser = await puppeteer.launch({
             headless: config.headless || true,                    // 无头模式，默认true
@@ -144,6 +168,9 @@ class PuppeteerHelper {
      * const cookies = await helper.gotoCookie({url: 'https://example.com'});
      */
     async gotoCookie(config) {
+        // 释放上一次调用遗留的浏览器实例（L4），再启动新实例
+        await this.closeBrowser();
+
         // 启动浏览器（使用环境变量中的Chrome路径）
         this.browser = await puppeteer.launch({
             headless: config.headless || true,
@@ -294,7 +321,7 @@ class PuppeteerHelper {
      * @example
      * const element = await helper.waitForSelector('.dynamic-content', {
      *   timeout: 10000,
-     *   onFound: (el) => console.log('Element found!')
+     *   onFound: (el) => log('Element found!')
      * });
      */
     async waitForSelector(selector, options = {}) {
