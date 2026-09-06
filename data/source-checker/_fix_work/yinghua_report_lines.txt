@@ -1,3 +1,0 @@
-- **规律纠正**：tabs 能带 `&&`（`&&` 在 pdfa 里当后代选择器，等价空格），但 `&&` 后必须是元素选择器(标签 `a`/`dt`/`li`、`.class`、`#id`)，不能是 `Text`/`Html`/`href` 等 pdfh 取值段。模板 `libs_drpy/template.js` 就有 `.play_source_tab&&a` 合法写法。
-- **修复**：`tabs` 改 `'.play-list-group-switch-item'`（取 3 个自身元素当 tab）。用有线路的影片(如 id=4425)测，`vod_play_from=1-30$$$31-60$$$61-62`，count=60，play 通过，**规则正确**。
-- **注意**：evaluate 取片会波动--若串联取到无线路的片(如首页首项 id=3856，该详情页 `.play-list-group-switch-item` pdfa count=0)会显示 count=0 误判不可用。属 evaluate 取片策略局限，非源规则问题。手动 `test detail --ids <有线路影片URL>` 可确认规则本身正确。
