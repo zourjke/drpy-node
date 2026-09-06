@@ -4,7 +4,7 @@
     "url": "https://d.kstore.dev/download/10717/scy.m3u",
     "img": "./lives.jpg",
     "headers": {
-      "User-Agent": null
+      "User-Agent": "kngx/1.10.2"
     }
   },
   {
@@ -12,7 +12,7 @@
     "url": "https://d.kstore.dev/download/10717/scy.txt",
     "img": "./lives.jpg",
     "headers": {
-      "User-Agent": null
+      "User-Agent": "kngx/1.10.2"
     }
   },
   {
@@ -20,7 +20,7 @@
     "url": "./tv/live_sc_unicom.m3u",
     "img": "./lives.jpg",
     "headers": {
-      "User-Agent": null
+      "User-Agent": "kngx/1.10.2"
     }
   },
   {
@@ -28,7 +28,7 @@
     "url": "./tv/live_sc_unicom.txt",
     "img": "./lives.jpg",
     "headers": {
-      "User-Agent": null
+      "User-Agent": "kngx/1.10.2"
     }
   }
 ]
