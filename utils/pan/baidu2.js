@@ -3,6 +3,7 @@
  * 提供百度网盘分享链接的解析和文件获取功能
  * 支持获取分享文件列表、生成播放链接等操作
  */
+import {log} from '../log.js';
 import '../../libs_drpy/jsencrypt.js'
 import {ENV} from "../env.js";
 import axios from "axios";
@@ -72,7 +73,7 @@ class BaiduDrive {
      */
     async init() {
         if (this.cookie) {
-            console.log('百度网盘cookie获取成功' + this.cookie)
+            log('百度网盘cookie获取成功' + this.cookie)
         }
     }
 
@@ -166,21 +167,38 @@ class BaiduDrive {
     async getShareList() {
         await this.getRandsk()
         this.headers['cookie'] = this.cookie
-        // 获取分享根目录文件列表
-        let data = (await axios.get(`${this.api}/share/list?web=5&app_id=${this.app_id}&desc=1&showempty=0&page=1&num=20&order=time&shorturl=${this.shorturl}&root=1&view_mode=${this.view_mode}&channel=${this.channel}&web=1&clienttype=0`, {
-            headers: this.headers
-        })).data
-        if (data.errno === 0 && data.list.length > 0) {
-            let file = {}
-            let dirs = [] // 目录列表
-            let videos = [] // 视频文件列表
+        
+        let file = {}
+        let allDirs = [] // 目录列表
+        let allVideos = [] // 视频文件列表
+        let page = 1
+        const num = 100 // 每页条数从20改为100
+        const maxPages = 50 // 最大页数限制，防止无限循环
+        let savedTitle = '' // 保存标题，避免在循环外部引用循环内变量
+        
+        while (true) {
+            // 获取分享根目录文件列表
+            let data = (await axios.get(`${this.api}/share/list?web=5&app_id=${this.app_id}&desc=1&showempty=0&page=${page}&num=${num}&order=time&shorturl=${this.shorturl}&root=1&view_mode=${this.view_mode}&channel=${this.channel}&web=1&clienttype=0`, {
+                headers: this.headers
+            })).data
+            
+            if (data.errno !== 0 || !data.list || data.list.length === 0) {
+                break;
+            }
+            
+            // 保存标题（只在第一页保存）
+            if (page === 1 && data.title) {
+                savedTitle = data.title;
+            }
+            
             this.uk = data.uk
             this.shareid = data.share_id
+            
             // 遍历文件列表，分类处理
             data.list.map(item => {
                 // 目录类型 (category: 6)
                 if (item.category === '6' || item.category === 6) {
-                    dirs.push(item.path)
+                    allDirs.push(item.path)
                 }
                 // 视频类型 (category: 1)
                 if (item.category === '1' || item.category === 1) {
@@ -195,7 +213,7 @@ class BaiduDrive {
                         thumbnail = item.icon;
                     }
 
-                    videos.push({
+                    allVideos.push({
                         name: fileName,
                         path: item.path.replaceAll('#', '\0'),
                         uk: this.uk,
@@ -207,28 +225,39 @@ class BaiduDrive {
                     })
                 }
             });
-            // 初始化文件对象
-            if (!(data.title in file) && data.title !== undefined) {
-                file[data.title] = [];
+            
+            // 判断是否还有更多页
+            if (data.list.length < num || page >= maxPages) {
+                break;
             }
-            if (videos.length >= 0 && data.title !== undefined) {
-                file[data.title] = [...videos]
-            }
-            // 递归获取子目录中的文件
-            let result = await Promise.all(dirs.map(async (path) => this.getSharepath(path)))
-            result = result.filter(item => item !== undefined && item !== null).flat()
-            if (result.length >= 0) {
-                // 确保递归获取的文件也正确处理文件名
-                const processedResult = result.map(item => {
-                    if (item.name && item.name.includes('/')) {
-                        item.name = item.name.split('/').pop();
-                    }
-                    return item;
-                });
-                file[data.title].push(...processedResult);
-            }
+            page++;
+        }
+        
+        if (allVideos.length === 0 && allDirs.length === 0) {
             return file;
         }
+        
+        // 初始化文件对象
+        if (!(savedTitle in file) && savedTitle !== '') {
+            file[savedTitle] = [];
+        }
+        if (allVideos.length >= 0 && savedTitle !== '') {
+            file[savedTitle] = [...allVideos]
+        }
+        // 递归获取子目录中的文件
+        let result = await Promise.all(allDirs.map(async (path) => this.getSharepath(path)))
+        result = result.filter(item => item !== undefined && item !== null).flat()
+        if (result.length >= 0) {
+            // 确保递归获取的文件也正确处理文件名
+            const processedResult = result.map(item => {
+                if (item.name && item.name.includes('/')) {
+                    item.name = item.name.split('/').pop();
+                }
+                return item;
+            });
+            file[savedTitle].push(...processedResult);
+        }
+        return file;
     }
 
     /**
@@ -239,18 +268,28 @@ class BaiduDrive {
     async getSharepath(path) {
         await this.getRandsk()
         this.headers['cookie'] = this.cookie
-        // 获取指定目录下的文件列表
-        let data = (await axios.get(`${this.api}/share/list?is_from_web=true&uk=${this.uk}&shareid=${this.shareid}&order=name&desc=0&showempty=0&view_mode=${this.view_mode}&web=1&page=1&num=100&dir=${encodeURIComponent(path)}&channel=${this.channel}&web=1&app_id=${this.app_id}`, {
-            headers: this.headers
-        })).data
-        if (data.errno === 0 && data.list.length > 0) {
-            let dirs = [] // 子目录列表
-            let videos = [] // 视频文件列表
+        
+        let allDirs = [] // 子目录列表
+        let allVideos = [] // 视频文件列表
+        let page = 1
+        const num = 100
+        const maxPages = 50 // 最大页数限制，防止无限循环
+        
+        while (true) {
+            // 获取指定目录下的文件列表
+            let data = (await axios.get(`${this.api}/share/list?is_from_web=true&uk=${this.uk}&shareid=${this.shareid}&order=name&desc=0&showempty=0&view_mode=${this.view_mode}&web=1&page=${page}&num=${num}&dir=${encodeURIComponent(path)}&channel=${this.channel}&web=1&app_id=${this.app_id}`, {
+                headers: this.headers
+            })).data
+            
+            if (data.errno !== 0 || !data.list || data.list.length === 0) {
+                break;
+            }
+            
             // 遍历当前目录文件
             data.list.map(item => {
                 // 目录类型
                 if (item.category === '6' || item.category === 6) {
-                    dirs.push(item.path)
+                    allDirs.push(item.path)
                 }
                 // 视频类型
                 if (item.category === '1' || item.category === 1) {
@@ -265,7 +304,7 @@ class BaiduDrive {
                         thumbnail = item.icon;
                     }
 
-                    videos.push({
+                    allVideos.push({
                         name: fileName,
                         path: item.path.replaceAll('#', '\0'),
                         uk: this.uk,
@@ -277,20 +316,31 @@ class BaiduDrive {
                     })
                 }
             });
-            // 递归处理子目录
-            let result = await Promise.all(dirs.map(async (path) => this.getSharepath(path)))
-            result = result.filter(item => item !== undefined && item !== null);
-
-            // 确保递归获取的文件也正确处理文件名
-            const processedResult = result.map(item => {
-                if (item.name && item.name.includes('/')) {
-                    item.name = item.name.split('/').pop();
-                }
-                return item;
-            });
-
-            return [...videos, ...processedResult.flat()];
+            
+            // 判断是否还有更多页
+            if (data.list.length < num || page >= maxPages) {
+                break;
+            }
+            page++;
         }
+        
+        if (allVideos.length === 0 && allDirs.length === 0) {
+            return [];
+        }
+        
+        // 递归处理子目录
+        let result = await Promise.all(allDirs.map(async (path) => this.getSharepath(path)))
+        result = result.filter(item => item !== undefined && item !== null);
+
+        // 确保递归获取的文件也正确处理文件名
+        const processedResult = result.map(item => {
+            if (item.name && item.name.includes('/')) {
+                item.name = item.name.split('/').pop();
+            }
+            return item;
+        });
+
+        return [...allVideos, ...processedResult.flat()];
     }
 
     /**
