@@ -3,8 +3,10 @@ import {Parser} from 'pickleparser';
 
 const HOST = "127.0.0.1";
 const PORT = 57570;
-const MAX_MSG_SIZE = 10 * 1024 * 1024;
-const TIMEOUT = 30_000; // 30秒超时
+// 单包上限与超时可经环境变量覆写（默认值=历史硬编码，不配置则行为不变）；
+// python 守护进程侧读取同名变量，需与 docs/envdoc.md 登记保持一致
+const MAX_MSG_SIZE = Number(process.env.BRIDGE_PACKET_MAX) || 10 * 1024 * 1024;
+const TIMEOUT = Number(process.env.BRIDGE_TIMEOUT) || 30_000;
 
 /**
  * Node.js -> Python 请求包（保持 JSON 格式，Python 端需要 json.loads）

@@ -323,6 +323,14 @@ class Spider(BaseSpider):  # 元类 默认的元类 type
     }
 
     def localProxy(self, params):
+        """本地代理方法。返回五元组 [code, mediaType, content, headers, toBytes]：
+        - toBytes 缺省: content 全量返回（仅小体积，如 m3u8 文本改写）
+        - toBytes=2: content 为 http URL，服务端 302 到 /mediaProxy 流式代理（大文件/长视频推荐，
+          headers 由服务端携带，规避播放器 302 丢自定义头导致防盗链 403）
+        - toBytes=3: content 为 http URL，服务端内联流式 pipe（客户端不跟随 302 时用）
+        params 含框架注入的 __range(客户端Range头) 与 __mediaProxy(mediaProxy基址)；
+        基类另提供 proxy_media_url / rewrite_m3u8_to_proxy 辅助方法（见 base/spider.py）。
+        协议详见 docs/t4api.md「代理接口与 toBytes 协议」。"""
         # http://192.168.31.49:5707/api/v1/vod/哔滴影视?proxy=1&do=py&type=1.m3u8
         print(params)
         content = """

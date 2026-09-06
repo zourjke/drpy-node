@@ -115,6 +115,15 @@ class BaseSpider(metaclass=ABCMeta):  # 元类 默认的元类 type
     def init_api_ext_file(self):
         pass
 
+    def get_proxies(self):
+        """
+        返回 requests 代理配置，默认空字典（不走代理）。
+        需要走代理的源 override 此方法，例如：
+            def get_proxies(self):
+                return {'http': 'http://127.0.0.1:7890', 'https': 'http://127.0.0.1:7890'}
+        """
+        return {}
+
     def getProxyUrl(self, flag=False):
         """
         获取本地代理地址
@@ -128,6 +137,52 @@ class BaseSpider(metaclass=ABCMeta):  # 元类 默认的元类 type
             return self.t4_api
         else:
             return ''
+
+    def proxy_media_url(self, url, headers=None, base=''):
+        """
+        把媒体直链包装为服务端 mediaProxy 流式代理地址（大文件/长视频专用）。
+
+        localProxy 返回写法：
+            return [302, "text/html", self.proxy_media_url(url, headers, params.get('__mediaProxy', '')), {}, 2]
+            return [200, mime, self.proxy_media_url(url, headers, params.get('__mediaProxy', '')), {}, 3]
+
+        base 未注入（旧路由/旧客户端场景）时原样返回 url，优雅降级为直连。
+        @param url: 媒体直链
+        @param headers: 拉流所需的自定义头（UA/Referer/Cookie 等），由服务端携带，规避 302 丢头
+        @param base: mediaProxy 基址，取 localProxy 的 params['__mediaProxy']
+        """
+        base = base or getattr(self, '_media_proxy_base', '')
+        if not base:
+            return url
+        qs = f"?url={self.base64Encode(url)}&form=base64&stream=1"
+        if headers:
+            qs += f"&header={self.base64Encode(json.dumps(headers, ensure_ascii=False))}"
+        return f"{base}{qs}"
+
+    def rewrite_m3u8_to_proxy(self, m3u8_text, m3u8_url, headers=None, base=''):
+        """
+        m3u8 文本改写：分片/嵌套 m3u8 行补全相对地址后包装为 mediaProxy 流式地址（长视频场景）。
+        # 开头的标签行原样保留。localProxy 返回写法：
+            return [200, "application/vnd.apple.mpegurl",
+                    self.rewrite_m3u8_to_proxy(text, m3u8_url, headers, params.get('__mediaProxy', ''))]
+        @param m3u8_text: m3u8 原始文本
+        @param m3u8_url: 该 m3u8 自身的地址（用于补全相对路径）
+        @param headers: 分片拉流所需的自定义头
+        @param base: mediaProxy 基址，取 localProxy 的 params['__mediaProxy']
+        """
+        lines = []
+        last_r = m3u8_url[:m3u8_url.rfind('/')]
+        parts = m3u8_url.split('/')
+        durl = f"{parts[0]}//{parts[2]}" if len(parts) > 2 else last_r
+        for line in m3u8_text.strip().split('\n'):
+            line = line.strip()
+            if not line or line.startswith('#'):
+                lines.append(line)
+                continue
+            if 'http' not in line:
+                line = (last_r if line.count('/') < 2 else durl) + ('' if line.startswith('/') else '/') + line
+            lines.append(self.proxy_media_url(line, headers, base))
+        return '\n'.join(lines)
 
     def getDependence(self):
         return []
@@ -204,29 +259,29 @@ class BaseSpider(metaclass=ABCMeta):  # 元类 默认的元类 type
                        src)
         return clean
 
-    def fetch(self, url, params=None, headers=None, cookies=None, timeout=5, verify=True,
+    def fetch(self, url, params=None, headers=None, cookies=None, timeout=5, verify=False,
               allow_redirects=True, stream=None):
         rsp = requests.get(url, params=params, headers=headers, cookies=cookies, timeout=timeout,
-                           verify=verify,
+                           verify=verify, proxies=self.get_proxies(),
                            allow_redirects=allow_redirects, stream=stream)
         rsp.encoding = 'utf-8'
         return rsp
 
-    def post(self, url, data=None, headers=None, cookies=None, timeout=5, verify=True, allow_redirects=True,
+    def post(self, url, data=None, headers=None, cookies=None, timeout=5, verify=False, allow_redirects=True,
              stream=None):
         rsp = requests.post(url, data=data, headers=headers, cookies=cookies, timeout=timeout, verify=verify,
-                            allow_redirects=allow_redirects, stream=stream)
+                            proxies=self.get_proxies(), allow_redirects=allow_redirects, stream=stream)
         rsp.encoding = 'utf-8'
         return rsp
 
-    def postJson(self, url, json, headers=None, cookies=None, timeout=5, verify=True, allow_redirects=True,
+    def postJson(self, url, json, headers=None, cookies=None, timeout=5, verify=False, allow_redirects=True,
                  stream=None):
         rsp = requests.post(url, json=json, headers=headers, cookies=cookies, timeout=timeout, verify=verify,
-                            allow_redirects=allow_redirects, stream=stream)
+                            proxies=self.get_proxies(), allow_redirects=allow_redirects, stream=stream)
         rsp.encoding = 'utf-8'
         return rsp
 
-    def postBinary(self, url, data: dict, boundary=None, headers=None, cookies=None, timeout=5, verify=True,
+    def postBinary(self, url, data: dict, boundary=None, headers=None, cookies=None, timeout=5, verify=False,
                    allow_redirects=True, stream=None):
         if boundary is None:
             boundary = f'--dio-boundary-{int(time.time())}'
@@ -239,7 +294,7 @@ class BaseSpider(metaclass=ABCMeta):  # 元类 默认的元类 type
         m = encode_multipart_formdata(fields, boundary=boundary)
         data = m[0]
         rsp = requests.post(url, data=data, headers=headers, cookies=cookies, timeout=timeout, verify=verify,
-                            allow_redirects=allow_redirects, stream=stream)
+                            proxies=self.get_proxies(), allow_redirects=allow_redirects, stream=stream)
         rsp.encoding = 'utf-8'
         return rsp
 

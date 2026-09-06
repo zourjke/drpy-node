@@ -48,10 +48,13 @@ except Exception:
 HOST = "127.0.0.1"
 PORT = 57570
 
-MAX_MSG_SIZE = 60 * 1024 * 1024  # 60MB
+# BRIDGE_PACKET_MAX / BRIDGE_TIMEOUT 与 Node 侧 spider/py/core/bridge.js 同名变量对应
+# （daemonManager 以 {...process.env} 启动本进程，环境变量可直接透传）；
+# 默认值=历史硬编码，不配置则行为不变
+MAX_MSG_SIZE = int(os.environ.get("BRIDGE_PACKET_MAX", 60 * 1024 * 1024))  # 60MB
 MAX_CACHED_INSTANCES = 100  # 最大缓存实例数
 INIT_TIMEOUT = 100  # init 超时（秒）
-REQUEST_TIMEOUT = 30  # 单次请求 socket 超时（秒）
+REQUEST_TIMEOUT = int(os.environ.get("BRIDGE_TIMEOUT", 30 * 1000)) / 1000  # 单次请求 socket 超时（秒）
 IDLE_EXPIRE = 30 * 60  # 实例空闲过期（秒）
 CLEAN_INTERVAL = 5 * 60  # 清理间隔（秒）
 MAX_CONCURRENT_INITS = 8  # 并发初始化上限（可按需调大/调小）
