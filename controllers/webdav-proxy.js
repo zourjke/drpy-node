@@ -1,3 +1,4 @@
+import {log, logError, logWarn} from '../utils/log.js';
 import { PROJECT_ROOT } from '../utils/pathHelper.js';
 /**
  * WebDAV 代理控制器模块
@@ -8,6 +9,7 @@ import { PROJECT_ROOT } from '../utils/pathHelper.js';
 import {ENV} from '../utils/env.js';
 import {WebDAVClient} from '../utils/webdav.js';
 import {CacheManagerFactory, createHealthResponse, createStatusResponse} from '../utils/proxy-util.js';
+import {parseRangeHeader} from '../utils/proxy-common.js';
 import {readFileSync} from 'fs';
 import path from 'path';
 
@@ -55,7 +57,7 @@ export default (fastify, options, done) => {
 
             return parsed;
         } catch (error) {
-            console.warn('Could not load default WebDAV config:', error.message);
+            logWarn('Could not load default WebDAV config:', error.message);
             return null;
         }
     }
@@ -65,7 +67,7 @@ export default (fastify, options, done) => {
      * GET /webdav/health - 检查 WebDAV 代理服务状态
      */
     fastify.get('/webdav/health', async (request, reply) => {
-        console.log(`[webdavController] Health check request`);
+        log(`[webdavController] Health check request`);
 
         const healthData = createHealthResponse(webdavClients, fileCache, {
             features: [
@@ -87,7 +89,7 @@ export default (fastify, options, done) => {
     fastify.get('/webdav/file', async (request, reply) => {
         const {path: filePath, config: configParam} = request.query;
 
-        console.log(`[webdavController] File request: ${filePath}`);
+        log(`[webdavController] File request: ${filePath}`);
 
         // 验证必需参数
         if (!filePath) {
@@ -139,9 +141,8 @@ export default (fastify, options, done) => {
             let streamOptions = {};
 
             if (range) {
-                const parts = range.replace(/bytes=/, "").split("-");
-                const start = parseInt(parts[0], 10);
-                const end = parts[1] ? parseInt(parts[1], 10) : fileInfo.size - 1;
+                // P2：Range 拆解收敛至 utils/proxy-common.js parseRangeHeader
+                const {start, end} = parseRangeHeader(range, fileInfo.size);
 
                 if (start >= fileInfo.size || end >= fileInfo.size) {
                     reply.status(416);
@@ -180,7 +181,7 @@ export default (fastify, options, done) => {
             return reply.send(stream);
 
         } catch (error) {
-            console.error('[webdavController] File request error:', error);
+            logError('[webdavController] File request error:', error);
             return reply.status(500).send({error: error.message});
         }
     });
@@ -192,7 +193,7 @@ export default (fastify, options, done) => {
     fastify.get('/webdav/info', async (request, reply) => {
         const {path: filePath, config: configParam} = request.query;
 
-        console.log(`[webdavController] Info request: ${filePath}`);
+        log(`[webdavController] Info request: ${filePath}`);
 
         // 验证必需参数
         if (!filePath) {
@@ -216,7 +217,7 @@ export default (fastify, options, done) => {
 
             return reply.send(fileInfo);
         } catch (error) {
-            console.error('[webdavController] Info request error:', error);
+            logError('[webdavController] Info request error:', error);
             return reply.status(500).send({error: error.message});
         }
     });
@@ -228,7 +229,7 @@ export default (fastify, options, done) => {
     fastify.get('/webdav/list', async (request, reply) => {
         const {path: dirPath = '/', config: configParam} = request.query;
 
-        console.log(`[webdavController] List request: ${dirPath}`);
+        log(`[webdavController] List request: ${dirPath}`);
 
         try {
             let config;
@@ -247,7 +248,7 @@ export default (fastify, options, done) => {
 
             return reply.send(items);
         } catch (error) {
-            console.error('[webdavController] List request error:', error);
+            logError('[webdavController] List request error:', error);
             return reply.status(500).send({error: error.message});
         }
     });
@@ -257,7 +258,7 @@ export default (fastify, options, done) => {
      * POST /webdav/config - 测试和配置 WebDAV 连接
      */
     fastify.post('/webdav/config', async (request, reply) => {
-        console.log(`[webdavController] Config test request`);
+        log(`[webdavController] Config test request`);
 
         try {
             const config = request.body;
@@ -283,7 +284,7 @@ export default (fastify, options, done) => {
                 }
             });
         } catch (error) {
-            console.error('[webdavController] Config test error:', error);
+            logError('[webdavController] Config test error:', error);
             return reply.status(500).send({error: error.message});
         }
     });
@@ -293,7 +294,7 @@ export default (fastify, options, done) => {
      * DELETE /webdav/cache - 清理缓存
      */
     fastify.delete('/webdav/cache', async (request, reply) => {
-        console.log(`[webdavController] Cache clear request`);
+        log(`[webdavController] Cache clear request`);
 
         try {
             // 非VERCEL环境可在设置中心控制此功能是否开启
@@ -319,7 +320,7 @@ export default (fastify, options, done) => {
                 }
             });
         } catch (error) {
-            console.error('[webdavController] Cache clear error:', error);
+            logError('[webdavController] Cache clear error:', error);
             return reply.status(500).send({error: error.message});
         }
     });
@@ -329,7 +330,7 @@ export default (fastify, options, done) => {
      * GET /webdav/status - 获取代理服务状态
      */
     fastify.get('/webdav/status', async (request, reply) => {
-        console.log(`[webdavController] Status request`);
+        log(`[webdavController] Status request`);
 
         try {
             const config = loadDefaultConfig();
@@ -366,7 +367,7 @@ export default (fastify, options, done) => {
 
             return reply.send(statusData);
         } catch (error) {
-            console.error('[webdavController] Status request error:', error);
+            logError('[webdavController] Status request error:', error);
             return reply.status(500).send({error: error.message});
         }
     });
