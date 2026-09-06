@@ -11,9 +11,11 @@
  * @version 1.0.0
  */
 
+import {log, logError} from '../log.js';
 import axios from "axios";
 import CryptoJS from "crypto-js";
 import {ENV} from "../env.js";
+import {boundedCache} from "../bounded-cache.js";
 
 /**
  * 移动云盘驱动类
@@ -43,8 +45,8 @@ class YunDrive {
         };
         // 分享链接ID
         this.linkID = '';
-        // 缓存对象，用于存储API响应结果
-        this.cache = {};
+        // 缓存对象，用于存储API响应结果 (L11: 有界化——缓存值是整份目录 JSON，原先只增不减)
+        this.cache = boundedCache({max: 100});
         // 授权token
         this.authorization = ''
     }
@@ -59,22 +61,22 @@ class YunDrive {
      */
     async init() {
         if (this.cookie) {
-            console.log('移动cookie获取成功' + this.cookie)
+            log('移动cookie获取成功' + this.cookie)
             const cookie = this.cookie.split(';');
             if (this.authorization === '') {
                 // 从cookie中提取authorization token
                 cookie.forEach((item) => {
                     if (item.indexOf('authorization') !== -1) {
                         this.authorization = item.replace('authorization=', '');
-                        console.log('authorization获取成功:' + this.authorization)
+                        log('authorization获取成功:' + this.authorization)
                     }
                 })
             }
         } else {
-            console.error("请先获取移动cookie")
+            logError("请先获取移动cookie")
         }
         if (this.account) {
-            console.log("移动账号获取成功")
+            log("移动账号获取成功")
         }
     }
 
@@ -176,7 +178,7 @@ class YunDrive {
      */
     async getShareInfo(pCaID) {
         if (!this.linkID) {
-            console.error('linkID is not set. Please call getShareID first.');
+            logError('linkID is not set. Please call getShareID first.');
             return null;
         }
         // 检查缓存
@@ -212,7 +214,7 @@ class YunDrive {
             this.cache[cacheKey] = json;
             return json;
         } catch (error) {
-            console.error('Error processing share info:', error);
+            logError('Error processing share info:', error);
             return null;
         }
     }
@@ -308,7 +310,7 @@ class YunDrive {
                 return [...videos, ...result.flat()];
             }
         } catch (error) {
-            console.error('Error processing share data:', error);
+            logError('Error processing share data:', error);
             return null;
         }
     }
@@ -345,7 +347,7 @@ class YunDrive {
                 return result.flat();
             }
         } catch (error) {
-            console.error('Error processing share URL:', error);
+            logError('Error processing share URL:', error);
             return null;
         }
     }
