@@ -1,13 +1,13 @@
-/**
+/***
  * 文档服务控制器
  * 提供文档文件的访问和渲染功能
  * 支持Markdown文件渲染为HTML，以及其他静态文件的直接访问
  */
+import {log} from '../utils/log.js';
 import path from 'path';
 import {existsSync, readFileSync} from 'fs';
 import {getMimeType} from '../utils/mime-type.js';
 import '../utils/marked.min.js'; // Markdown解析库
-// import { marked } from "marked";
 import {validateBasicAuth} from "../utils/api_validate.js";
 
 /**
@@ -26,7 +26,7 @@ export default (fastify, options, done) => {
     fastify.get('/docs/*', {preHandler: validateBasicAuth}, async (request, reply) => {
         // 捕获整个路径参数
         const fullPath = request.params['*']; 
-        console.log(`Request received for path: ${fullPath}`);
+        log(`Request received for path: ${fullPath}`);
         try {
             // 将相对路径解析为绝对路径
             const resolvedPath = path.resolve(options.docsDir, fullPath); 
@@ -93,7 +93,7 @@ export default (fastify, options, done) => {
 
                 } catch (e) {
                     // 文件读取错误处理
-                    console.log(e);
+                    log(e);
                 }
             }
         } catch (error) {
