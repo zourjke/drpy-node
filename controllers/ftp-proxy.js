@@ -1,4 +1,5 @@
-/**
+/**import {log, logError, logWarn} from '../utils/log.js';
+
  * FTP 代理控制器模块
  * 提供 FTP 文件的 HTTP 直链访问功能
  * @module ftp-proxy-controller
@@ -34,6 +35,24 @@ export default (fastify, options, done) => {
     }
 
     /**
+     * 客户端一次性释放器 (L8)：无论 finish/close/error 哪条路径先发生，
+     * 都保证每个请求对应的 FTP 连接被显式关闭，不再依赖服务端踢出或 GC。
+     */
+    function createClientReleaser(clientPromise) {
+        let released = false;
+        return async () => {
+            if (released) return;
+            released = true;
+            try {
+                const client = await clientPromise;
+                await client.disconnect();
+            } catch {
+                // 连接已经异常/客户端不支持时忽略
+            }
+        };
+    }
+
+    /**
      * 加载默认配置
      */
     function loadDefaultConfig() {
@@ -49,7 +68,7 @@ export default (fastify, options, done) => {
 
             return parsed;
         } catch (error) {
-            console.warn('Could not load default FTP config:', error.message);
+            logWarn('Could not load default FTP config:', error.message);
             return null;
         }
     }
@@ -78,7 +97,7 @@ export default (fastify, options, done) => {
      * GET /ftp/health - 检查 FTP 代理服务状态
      */
     fastify.get('/ftp/health', async (request, reply) => {
-        console.log(`[ftpController] Health check request`);
+        log(`[ftpController] Health check request`);
 
         const healthData = createHealthResponse(ftpClients, fileCache, {
             features: [
@@ -103,7 +122,7 @@ export default (fastify, options, done) => {
         handler: async (request, reply) => {
         const {path: filePath, config: configParam} = request.query;
 
-        console.log(`[ftpController] File request: ${filePath}`);
+        log(`[ftpController] File request: ${filePath}`);
 
         // 验证必需参数
         if (!filePath) {
@@ -128,7 +147,9 @@ export default (fastify, options, done) => {
                 return reply.status(400).send({error: 'FTP config not provided'});
             }
 
-            const client = getFTPClient(config);
+            const clientPromise = Promise.resolve().then(() => getFTPClient(config));
+            const releaseClient = createClientReleaser(clientPromise);
+            const client = await clientPromise;
 
             // 处理 Range 请求
             const range = request.headers.range;
@@ -146,7 +167,7 @@ export default (fastify, options, done) => {
                 const {stream, headers, isRangeRequest, fileInfo} = streamResult;
 
                 if (!fileInfo || fileInfo.isDirectory) {
-                    await client.disconnect();
+                    await releaseClient();
                     return reply.status(404).send({error: 'File not found or is a directory'});
                 }
 
@@ -157,29 +178,29 @@ export default (fastify, options, done) => {
                     reply.header('Accept-Ranges', 'bytes');
                     reply.header('Cache-Control', 'public, max-age=3600');
                     reply.header('Access-Control-Allow-Origin', '*');
-                    
+
                     if (fileInfo.lastModified) {
                         reply.header('Last-Modified', new Date(fileInfo.lastModified).toUTCString());
                     }
-                    
+
                     if (range) {
-                        const parts = range.replace(/bytes=/, "").split("-");
-                        const start = parseInt(parts[0], 10);
-                        const end = parts[1] ? parseInt(parts[1], 10) : fileInfo.size - 1;
-                        
+                        // P2：Range 拆解收敛至 utils/proxy-common.js parseRangeHeader
+                        const {start, end} = parseRangeHeader(range, fileInfo.size);
+
                         if (start >= fileInfo.size || end >= fileInfo.size) {
                             reply.status(416);
                             reply.header('Content-Range', `bytes */${fileInfo.size}`);
                             return;
                         }
-                        
+
                         reply.status(206);
                         reply.header('Content-Range', `bytes ${start}-${end}/${fileInfo.size}`);
                         reply.header('Content-Length', end - start + 1);
                     } else {
                         reply.header('Content-Length', fileInfo.size);
                     }
-                    
+
+                    await releaseClient();
                     return reply.send();
                 }
 
@@ -194,14 +215,20 @@ export default (fastify, options, done) => {
                 });
                 reply.header('Access-Control-Allow-Origin', '*');
 
+                // 流式转发期间挂接连接释放钩子：正常结束(finish)/客户端中断(close)
+                // 任一路径都关闭 FTP 连接，原先成功路径从不 disconnect 导致连接堆积 (L8)
+                reply.raw.on('finish', releaseClient);
+                reply.raw.on('close', releaseClient);
+
                 // 返回流
                 return reply.send(stream);
             } catch (streamError) {
+                await releaseClient();
                 throw streamError;
             }
 
         } catch (error) {
-            console.error('[ftpController] File request error:', error);
+            logError('[ftpController] File request error:', error);
             return reply.status(500).send({error: error.message});
         }
     }});
@@ -213,7 +240,7 @@ export default (fastify, options, done) => {
     fastify.get('/ftp/info', async (request, reply) => {
         const {path: filePath, config: configParam} = request.query;
 
-        console.log(`[ftpController] Info request: ${filePath}`);
+        log(`[ftpController] Info request: ${filePath}`);
 
         // 验证必需参数
         if (!filePath) {
@@ -234,11 +261,16 @@ export default (fastify, options, done) => {
             }
 
             const client = getFTPClient(config);
-            const fileInfo = await client.getInfo(filePath);
+            const releaseClient = createClientReleaser(Promise.resolve(client));
+            try {
+                const fileInfo = await client.getInfo(filePath);
 
-            return reply.send(fileInfo);
+                return reply.send(fileInfo);
+            } finally {
+                await releaseClient();
+            }
         } catch (error) {
-            console.error('[ftpController] Info request error:', error);
+            logError('[ftpController] Info request error:', error);
             return reply.status(500).send({error: error.message});
         }
     });
@@ -250,7 +282,7 @@ export default (fastify, options, done) => {
     fastify.get('/ftp/list', async (request, reply) => {
         const {path: dirPath = '/', config: configParam} = request.query;
 
-        console.log(`[ftpController] List request: ${dirPath}`);
+        log(`[ftpController] List request: ${dirPath}`);
 
         try {
             let config;
@@ -266,11 +298,16 @@ export default (fastify, options, done) => {
             }
 
             const client = getFTPClient(config);
-            const items = await client.listDirectory(dirPath);
+            const releaseClient = createClientReleaser(Promise.resolve(client));
+            try {
+                const items = await client.listDirectory(dirPath);
 
-            return reply.send(items);
+                return reply.send(items);
+            } finally {
+                await releaseClient();
+            }
         } catch (error) {
-            console.error('[ftpController] List request error:', error);
+            logError('[ftpController] List request error:', error);
             return reply.status(500).send({error: error.message});
         }
     });
@@ -280,7 +317,7 @@ export default (fastify, options, done) => {
      * POST /ftp/config - 测试和配置 FTP 连接
      */
     fastify.post('/ftp/config', async (request, reply) => {
-        console.log(`[ftpController] Config test request`);
+        log(`[ftpController] Config test request`);
 
         try {
             let config = request.body;
@@ -294,9 +331,14 @@ export default (fastify, options, done) => {
 
             config = processConfig(config);
 
-            // 测试连接
+            // 测试连接（测完立即释放连接，原先测完从不断开）
             const client = getFTPClient(config);
-            await client.testConnection();
+            const releaseClient = createClientReleaser(Promise.resolve(client));
+            try {
+                await client.testConnection();
+            } finally {
+                await releaseClient();
+            }
 
             return reply.send({
                 success: true,
@@ -310,7 +352,7 @@ export default (fastify, options, done) => {
                 }
             });
         } catch (error) {
-            console.error('[ftpController] Config test error:', error);
+            logError('[ftpController] Config test error:', error);
             return reply.status(500).send({error: error.message});
         }
     });
@@ -320,7 +362,7 @@ export default (fastify, options, done) => {
      * DELETE /ftp/cache - 清理缓存
      */
     fastify.delete('/ftp/cache', async (request, reply) => {
-        console.log(`[ftpController] Cache clear request`);
+        log(`[ftpController] Cache clear request`);
 
         try {
             // 非VERCEL环境可在设置中心控制此功能是否开启
@@ -355,7 +397,7 @@ export default (fastify, options, done) => {
                 }
             });
         } catch (error) {
-            console.error('[ftpController] Cache clear error:', error);
+            logError('[ftpController] Cache clear error:', error);
             return reply.status(500).send({error: error.message});
         }
     });
@@ -365,7 +407,7 @@ export default (fastify, options, done) => {
      * GET /ftp/status - 获取代理服务状态
      */
     fastify.get('/ftp/status', async (request, reply) => {
-        console.log(`[ftpController] Status request`);
+        log(`[ftpController] Status request`);
 
         try {
             const config = loadDefaultConfig();
@@ -405,7 +447,7 @@ export default (fastify, options, done) => {
 
             return reply.send(statusData);
         } catch (error) {
-            console.error('[ftpController] Status request error:', error);
+            logError('[ftpController] Status request error:', error);
             return reply.status(500).send({error: error.message});
         }
     });
