@@ -132,6 +132,7 @@ dist
 !README.md
 .idea
 /config/env.json
+/config/source-states.json
 /spider/js/UC分享.js
 /json/UC分享.json
 /jx/奇奇.js
@@ -156,6 +157,8 @@ dist
 /clipboard.txt.bak
 /apps/cat/
 /data/temp/
+/.playwright-mcp/
+/data/source-checker/_fix_work/
 /scripts/mjs/index.db
 /scripts/test/rsa-test.json
 /apps/salary/
