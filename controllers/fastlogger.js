@@ -120,7 +120,8 @@ function initializeFastify() {
     const instances = {
         fastify: _fastify,
         wsApp: _wsApp,
-        logger: _logger
+        logger: _logger,
+        logStream
     };
 
     globalThis[FASTIFY_INSTANCE_KEY] = instances;
@@ -131,6 +132,22 @@ const {fastify: fastifyInstance, wsApp: wsAppInstance} = initializeFastify();
 
 export const fastify = fastifyInstance;
 export const wsApp = wsAppInstance;
+
+/**
+ * 关闭并 flush 日志文件流 (L19)
+ * 历史上进程退出链从不 end() rotating-file-stream，
+ * pm2 高频重启时可能丢失尾部日志或截断轮转边界。
+ */
+export function closeLogStream() {
+    const stream = globalThis[FASTIFY_INSTANCE_KEY]?.logStream;
+    if (stream && typeof stream.end === 'function') {
+        try {
+            stream.end();
+        } catch {
+            // 流已关闭时忽略
+        }
+    }
+}
 
 // 安全的轮转测试端点
 // if (LOG_WITH_FILE && logStream) {
