@@ -1,6 +1,7 @@
 // 图片存储控制器 - 基于Fastify插件模式
 // 实现内存共享变量存储图片base64并提供路由返回图片
 
+const CLEAN_GAP_MS = 10 * 60 * 1000; // 惰性清理最小间隔：避免高频上传时反复全表扫描
 
 const imageStore = new Map();
 
@@ -8,6 +9,7 @@ const imageStore = new Map();
 class ImageManager {
     constructor() {
         this.images = imageStore;
+        this._lastCleanAt = 0;
     }
 
     // 存储图片
@@ -33,12 +35,25 @@ class ImageManager {
             mimeType: this.extractMimeType(base64Data)
         });
 
+        this.maybeCleanExpiredImages();
+
         return {
             imageId,
             imageUrl: `/image/${imageId}`,
             size: size,
             mimeType: this.extractMimeType(base64Data)
         };
+    }
+
+    // 惰性过期清理：距上次清理超过 CLEAN_GAP_MS 才执行一次，
+    // 保证长期无人调用手动清理接口时 Map 也不会无限驻留 (L3)
+    maybeCleanExpiredImages(maxAge = 24 * 60 * 60 * 1000) {
+        const now = Date.now();
+        if (now - this._lastCleanAt < CLEAN_GAP_MS) {
+            return null;
+        }
+        this._lastCleanAt = now;
+        return this.cleanExpiredImages(maxAge);
     }
 
     // 获取图片
@@ -118,6 +133,17 @@ class ImageManager {
 
 // 创建图片管理器实例
 const imageManager = new ImageManager();
+
+// 自动兜底清理：每小时扫描一次过期图片（unref 不阻塞进程优雅退出）。
+// 历史上 cleanExpiredImages 仅暴露手动 HTTP 接口、无任何定时调用方，
+// 导致 /image/store 持续上传时 Map 无限驻留 (L3)
+setInterval(() => {
+    try {
+        imageManager.cleanExpiredImages();
+    } catch {
+        // 清理失败不影响主流程，等下一轮或手动接口兜底
+    }
+}, 60 * 60 * 1000).unref?.();
 
 // 导出图片管理器实例供其他模块使用
 export {imageManager};
