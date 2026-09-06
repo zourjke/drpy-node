@@ -1,0 +1,23 @@
+{
+    "name": "drpy-node 内置插件市场",
+    "updated": "2026-08-29",
+    "plugins": [
+        {
+            "name": "lxserver",
+            "version": "2.0.0",
+            "title": "LX Music 同步服务 + Web播放器",
+            "desc": "洛雪音乐同步服务端，含 Web 播放器，支持多源搜索/Subsonic协议。安装后监听 9527 端口，账号密码在 plugins/lxserver/config.js 中配置。",
+            "author": "XCQ0607",
+            "runtime": "node",
+            "entry": "index.js",
+            "params": "",
+            "env": {
+                "PORT": "9527"
+            },
+            "platforms": ["all"],
+            "download": "https://github.com/XCQ0607/lxserver/releases/download/v2.0.0/lx-music-sync-server-v2.0.0-server.zip",
+            "sha256": "136f9064df46f0addef7b31e51be9cd3732ecaa5abd1b007c37ddb6571ac2743",
+            "homepage": "https://github.com/XCQ0607/lxserver"
+        }
+    ]
+}
