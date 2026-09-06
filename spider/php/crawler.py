@@ -182,6 +182,15 @@ class PHPBridge:
         self.spider_path = spider_path
 
     def call(self, method, *args):
+        # 安全校验: 限制 method 为合法标识符, spider_path 必须是存在的 .php 文件,
+        # 避免外部输入被当作可执行脚本路径/方法名传入子进程
+        if not isinstance(method, str) or not method.isidentifier():
+            print(f"[Bridge Error] Invalid method name: {method}")
+            return None
+        if not (os.path.isfile(self.spider_path) and self.spider_path.lower().endswith('.php')):
+            print(f"[Bridge Error] Invalid spider path: {self.spider_path}")
+            return None
+
         # 构建命令
         cmd = [PHP_CMD, BRIDGE_SCRIPT, self.spider_path, method]
         cmd_args = []
