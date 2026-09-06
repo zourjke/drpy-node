@@ -1,4 +1,5 @@
 // 1️⃣ 导入时用别名重命名原模块的 Database
+import {log, logError} from './log.js';
 import pkg from 'node-sqlite3-wasm';
 
 const {Database: SQLite3Database} = pkg; // 👈 关键别名
@@ -18,7 +19,7 @@ export class DataBase {
         const __dirname = path.dirname(__filename);
         const __rootPath = path.join(__dirname, '../');
         const __dbpath = path.join(__rootPath, this.db_file);
-        // console.log('__dbpath:', __dbpath);
+        // log('__dbpath:', __dbpath);
         const db = new SQLite3Database(__dbpath);
         this.db = db;
         return db
@@ -56,21 +57,21 @@ async function main() {
 
     // 查询数据
     const users = db.all('SELECT * FROM users');
-    console.log(users);
+    log(users);
 
     // 更新数据
     db.run('UPDATE users SET name = ? WHERE id = ?', ['Charlie', 1]);
 
     // 查询更新后的数据
     const updatedUsers = db.all('SELECT * FROM users');
-    console.log(updatedUsers);
+    log(updatedUsers);
 
     // 删除数据
     db.run('DELETE FROM users WHERE id = ?', [2]);
 
     // 查询删除后的数据
     const finalUsers = db.all('SELECT * FROM users');
-    console.log(finalUsers);
+    log(finalUsers);
 
     // 关闭数据库
     db.close();
@@ -78,4 +79,4 @@ async function main() {
 
 export const database = new DataBase('./database.db');
 
-// main().catch(err => console.error(err));
+// main().catch(err => logError(err));
