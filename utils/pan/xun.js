@@ -1,3 +1,4 @@
+import {log} from '../log.js';
 import {ENV} from "../env.js";
 import axios from "axios";
 import CryptoJS from "crypto-js";
@@ -33,9 +34,9 @@ class XunDriver {
         if (this.auth) {
             let info = JSON.parse(CryptoJS.enc.Base64.parse(this.auth.split('.')[1]).toString(CryptoJS.enc.Utf8))
             if (info.exp > Math.floor(Date.now() / 1000)) {
-                console.log("token未过期，继续使用")
+                log("token未过期，继续使用")
             } else {
-                console.log("token过期，重新登录")
+                log("token过期，重新登录")
             }
         } else {
             // await this.getAuth()
@@ -157,7 +158,7 @@ class XunDriver {
         };
         let login_data = (await axios.request(config))
         if (login_data.status === 200) {
-            console.log('登录成功')
+            log('登录成功')
             return login_data.data.sessionID;
         }
     }
@@ -189,7 +190,7 @@ class XunDriver {
     }
 
     async getVerifyCode() {
-        console.log("验证码登录")
+        log("验证码登录")
         if (this.deviceId === '' || this.deviceId === undefined) {
             let device_id = this.getuuid()
             ENV.set('device_id', device_id)
@@ -215,7 +216,7 @@ class XunDriver {
         };
         let verification = await axios.request(config).catch(e => e.response)
         if (verification.status === 200) {
-            console.log("验证码已发送")
+            log("验证码已发送")
             this.verification_id = verification.data.verification_id
         }
     }
@@ -270,12 +271,12 @@ class XunDriver {
         };
         let sign = await axios.request(config).catch(e => e.response)
         if (sign.status === 200) {
-            console.log("登录成功")
+            log("登录成功")
             ENV.set('xun_auth', sign.data.token_type + " " + sign.data.access_token)
             ENV.set('xun_user_id', sign.data.user_id)
             ENV.set('xun_refresh_token', sign.data.refresh_token)
         } else {
-            console.log("登录失败" + sign.data)
+            log("登录失败" + sign.data)
         }
     }
 
@@ -335,9 +336,9 @@ class XunDriver {
         } else {
             let info = JSON.parse(CryptoJS.enc.Base64.parse(this.auth.split('.')[1]).toString(CryptoJS.enc.Utf8))
             if (info.exp > Math.floor(Date.now() / 1000)) {
-                console.log("登录成功")
+                log("登录成功")
             } else {
-                console.log("登录过期，重新登录")
+                log("登录过期，重新登录")
                 ENV.set('xun_auth', '')
                 await this.getAuth()
             }
@@ -484,34 +485,49 @@ class XunDriver {
     }
 
     async getShareList() {
-        let path = '/drive/v1/share'
-        let mth = 'get'
-        let captcha_data = await this.getCaptcha_token(path, mth)
-        let config = {
-            method: 'GET',
-            url: `${this.xun_api}drive/v1/share?share_id=${this.share_id}&pass_code=${this.pass_code}&limit=100&page_token=&thumbnail_size=SIZE_SMALL`,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
-                'accept-language': 'zh,en-GB;q=0.9,en-US;q=0.8,en;q=0.7,zh-CN;q=0.6',
-                'authorization': '',
-                'x-captcha-token': captcha_data,
-                'x-client-id': 'Xqp0kJBXWhwaTpB6',
-                'x-device-id': '1bf91caf40093318e8040916eb7ad16a'
+        let file = {}
+        let allDirs = []
+        let allVideos = []
+        let page_token = ''
+        const maxPages = 50 // 最大页数限制，防止无限循环
+        let pageCount = 0
+        let savedTitle = '' // 保存标题，避免在循环外部引用循环内变量
+        
+        while (true) {
+            let path = '/drive/v1/share'
+            let mth = 'get'
+            let captcha_data = await this.getCaptcha_token(path, mth)
+            let config = {
+                method: 'GET',
+                url: `${this.xun_api}drive/v1/share?share_id=${this.share_id}&pass_code=${this.pass_code}&limit=100&page_token=${page_token}&thumbnail_size=SIZE_SMALL`,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
+                    'accept-language': 'zh,en-GB;q=0.9,en-US;q=0.8,en;q=0.7,zh-CN;q=0.6',
+                    'authorization': '',
+                    'x-captcha-token': captcha_data,
+                    'x-client-id': 'Xqp0kJBXWhwaTpB6',
+                    'x-device-id': '1bf91caf40093318e8040916eb7ad16a'
+                }
+            };
+            let sharelist = await axios.request(config)
+            if (sharelist.status !== 200 || !sharelist.data.files) {
+                break;
             }
-        };
-        let sharelist = await axios.request(config)
-        if (sharelist.status === 200) {
-            let file = {}
-            let dirs = []
-            let videos = []
+            
+            // 保存标题（只在第一页保存）
+            if (pageCount === 0 && sharelist.data.title) {
+                savedTitle = sharelist.data.title;
+            }
+            
             this.pass_code_token = sharelist.data.pass_code_token
+            
             sharelist.data.files.map(it => {
                 if (it.mime_type === '') {
-                    dirs.push(it.id)
+                    allDirs.push(it.id)
                 } else if (it.file_category === 'VIDEO') {
                     let text = /[#|'"\[\]&<>]/g
                     let name = text.test(it.name) ? it.name.replace(text, '') : it.name
-                    videos.push({
+                    allVideos.push({
                         name: name,
                         fileId: it.id,
                         share_id: this.share_id,
@@ -520,49 +536,69 @@ class XunDriver {
                     })
                 }
             })
-            if (!(sharelist.data.title in file) && sharelist.data.title !== undefined) {
-                file[sharelist.data.title] = [];
+            
+            // 判断是否还有更多页
+            if (!sharelist.data.next_page_token || sharelist.data.next_page_token === '' || pageCount >= maxPages) {
+                break;
             }
-            if (videos.length > 0 && sharelist.data.title !== undefined) {
-                file[sharelist.data.title] = [...videos]
-            }
-            let result = await Promise.all(dirs.map(async (id) => this.getShareDetail(id)))
-            result = result.filter(item => item !== undefined && item !== null).flat()
-            if (result.length >= 0) {
-                file[sharelist.data.title].push(...result);
-            }
-            return file
+            page_token = sharelist.data.next_page_token;
+            pageCount++;
         }
+        
+        if (allVideos.length === 0 && allDirs.length === 0) {
+            return file;
+        }
+        
+        if (!(savedTitle in file) && savedTitle !== '') {
+            file[savedTitle] = [];
+        }
+        if (allVideos.length > 0 && savedTitle !== '') {
+            file[savedTitle] = [...allVideos]
+        }
+        let result = await Promise.all(allDirs.map(async (id) => this.getShareDetail(id)))
+        result = result.filter(item => item !== undefined && item !== null).flat()
+        if (result.length >= 0) {
+            file[savedTitle].push(...result);
+        }
+        return file
     }
 
     async getShareDetail(id) {
-        let path = '/drive/v1/share'
-        let mth = 'get'
-        let captcha_data = await this.getCaptcha_token(path, mth)
-        let config = {
-            method: 'GET',
-            url: `${this.xun_api}drive/v1/share/detail?share_id=${this.share_id}&parent_id=${id}&pass_code_token=${encodeURIComponent(this.pass_code_token)}&limit=100&page_token=&thumbnail_size=SIZE_SMALL`,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
-                'accept-language': 'zh,en-GB;q=0.9,en-US;q=0.8,en;q=0.7,zh-CN;q=0.6',
-                'authorization': '',
-                'content-type': 'application/json',
-                'x-captcha-token': captcha_data,
-                'x-client-id': 'Xqp0kJBXWhwaTpB6',
-                'x-device-id': '1bf91caf40093318e8040916eb7ad16a'
+        let allDirs = []
+        let allVideos = []
+        let page_token = ''
+        const maxPages = 50 // 最大页数限制，防止无限循环
+        let pageCount = 0
+        
+        while (true) {
+            let path = '/drive/v1/share'
+            let mth = 'get'
+            let captcha_data = await this.getCaptcha_token(path, mth)
+            let config = {
+                method: 'GET',
+                url: `${this.xun_api}drive/v1/share/detail?share_id=${this.share_id}&parent_id=${id}&pass_code_token=${encodeURIComponent(this.pass_code_token)}&limit=100&page_token=${page_token}&thumbnail_size=SIZE_SMALL`,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
+                    'accept-language': 'zh,en-GB;q=0.9,en-US;q=0.8,en;q=0.7,zh-CN;q=0.6',
+                    'authorization': '',
+                    'content-type': 'application/json',
+                    'x-captcha-token': captcha_data,
+                    'x-client-id': 'Xqp0kJBXWhwaTpB6',
+                    'x-device-id': '1bf91caf40093318e8040916eb7ad16a'
+                }
+            };
+            let detail_data = await axios.request(config)
+            if (detail_data.status !== 200 || !detail_data.data.files) {
+                break;
             }
-        };
-        let detail_data = await axios.request(config)
-        if (detail_data.status === 200) {
-            let dirs = []
-            let videos = []
+            
             detail_data.data.files.map(it => {
                 if (it.mime_type === '') {
-                    dirs.push(it.id)
+                    allDirs.push(it.id)
                 } else if (it.file_category === 'VIDEO') {
                     let text = /[#|'"\[\]&<>]/g
                     let name = text.test(it.name) ? it.name.replace(text, '') : it.name
-                    videos.push({
+                    allVideos.push({
                         name: name,
                         fileId: it.id,
                         share_id: this.share_id,
@@ -571,10 +607,22 @@ class XunDriver {
                     })
                 }
             })
-            let result = await Promise.all(dirs.map(async (id) => this.getShareDetail(id)))
-            result = result.filter(item => item !== undefined && item !== null)
-            return [...videos, ...result.flat()];
+            
+            // 判断是否还有更多页
+            if (!detail_data.data.next_page_token || detail_data.data.next_page_token === '' || pageCount >= maxPages) {
+                break;
+            }
+            page_token = detail_data.data.next_page_token;
+            pageCount++;
         }
+        
+        if (allVideos.length === 0 && allDirs.length === 0) {
+            return [];
+        }
+        
+        let result = await Promise.all(allDirs.map(async (id) => this.getShareDetail(id)))
+        result = result.filter(item => item !== undefined && item !== null)
+        return [...allVideos, ...result.flat()];
     }
 
     async getShareUrl(fileId, share_id, pass_code_token) {
@@ -652,9 +700,9 @@ class XunDriver {
         };
         let file_data = await axios.request(config).catch(e => e.response)
         if (file_data.data.share_status === 'OK') {
-            console.log("转存文件成功")
+            log("转存文件成功")
         } else {
-            console.log(file_data.data.share_status)
+            log(file_data.data.share_status)
         }
 
     }
@@ -730,7 +778,7 @@ class XunDriver {
             let file_data = await axios.request(config)
             if (file_data.status === 200) {
                 this.fileId = file_data.data.file.id
-                console.log("文件创建成功，开始转存")
+                log("文件创建成功，开始转存")
             }
         }
     }
@@ -792,9 +840,9 @@ class XunDriver {
             };
             let delete_data = await axios.request(config).catch(e => e.response)
             if (delete_data.status === 200) {
-                console.log("删除文件成功")
+                log("删除文件成功")
             } else if (delete_data.status === 404) {
-                console.log("文件未找到，删除失败")
+                log("文件未找到，删除失败")
             }
         }
     }
@@ -904,7 +952,7 @@ class XunDriver {
             };
             let dwon_data = await axios(config).catch(e => e.response);
             if (dwon_data.status === 200) {
-                console.log("更新token成功")
+                log("更新token成功")
                 ENV.set('xun_refresh_token', dwon_data.data.refresh_token);
                 ENV.set('xun_auth', dwon_data.data.token_type + " " + dwon_data.data.access_token)
             }
@@ -915,9 +963,9 @@ class XunDriver {
         } else {
             let info = JSON.parse(CryptoJS.enc.Base64.parse(this.auth.split('.')[1]).toString(CryptoJS.enc.Utf8))
             if (info.exp > Math.floor(Date.now() / 1000)) {
-                console.log("token未过期，继续使用")
+                log("token未过期，继续使用")
             } else {
-                console.log("token过期，重新登录")
+                log("token过期，重新登录")
                 ENV.set('xun_auth', '')
                 await this.getDownload_auth()
             }
@@ -950,7 +998,7 @@ class XunDriver {
             };
             let file_data = await axios.request(config)
             if (file_data.status === 200) {
-                // console.log("下载地址："+file_data.data.links['application/octet-stream'].url || file_data.data['web_content_link'])
+                // log("下载地址："+file_data.data.links['application/octet-stream'].url || file_data.data['web_content_link'])
                 let link = file_data.data['web_content_link'] || file_data.data.links['application/octet-stream'].url
                 let host = new URL(link).host
                 if (this.host !== '') {
@@ -960,7 +1008,7 @@ class XunDriver {
                 return link
             }
         } catch (e) {
-            console.log(e)
+            log(e)
             return ''
         }
 
