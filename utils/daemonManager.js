@@ -95,13 +95,14 @@ export class DaemonManager {
      * @returns {string} Python解释器路径
      */
     getPythonPath() {
-        // 优先使用环境变量指定的Python路径
-        if (process.env.PYTHON_PATH) return process.env.PYTHON_PATH;
+        // 优先使用环境变量指定的Python路径（但需验证路径存在，避免跨平台无效路径）
+        if (process.env.PYTHON_PATH && fs.existsSync(process.env.PYTHON_PATH)) return process.env.PYTHON_PATH;
         // 如果在虚拟环境中，使用虚拟环境的Python
         if (process.env.VIRTUAL_ENV) {
-            return process.platform === 'win32'
+            const venvPython = process.platform === 'win32'
                 ? path.join(process.env.VIRTUAL_ENV, 'Scripts', 'python')
                 : path.join(process.env.VIRTUAL_ENV, 'bin', 'python');
+            if (fs.existsSync(venvPython)) return venvPython;
         }
         // 默认Python路径
         return process.platform === 'win32' ? 'python.exe' : 'python3';
