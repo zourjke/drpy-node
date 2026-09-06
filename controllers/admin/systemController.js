@@ -3,6 +3,7 @@
  * 提供健康检查、服务重启等系统级功能
  */
 
+import {logError} from '../../utils/log.js';
 import os from 'os';
 import { exec } from 'child_process';
 import util from 'util';
@@ -25,7 +26,7 @@ export async function getHealth(req, reply) {
         try {
             pythonAvailable = await daemon.isPythonAvailable();
         } catch (err) {
-            console.error('检查 Python 状态失败:', err);
+            logError('检查 Python 状态失败:', err);
         }
 
         return reply.send({
@@ -87,140 +88,57 @@ export async function restartService(req, reply) {
     }
 }
 
-// API 文档
-export async function getApiDocs(req, reply) {
-    const apiDocs = [
-        {
-            category: "系统管理",
-            endpoints: [
-                {
-                    path: "/api/admin/health",
-                    method: "GET",
-                    description: "获取系统健康状态，包括内存使用、运行时间、版本等信息"
-                },
-                {
-                    path: "/api/admin/restart",
-                    method: "POST",
-                    description: "尝试重启服务（仅在 PM2 环境下有效）"
-                },
-                {
-                    path: "/api/admin/docs",
-                    method: "GET",
-                    description: "获取 API 文档列表"
-                }
-            ]
-        },
-        {
-            category: "日志管理",
-            endpoints: [
-                {
-                    path: "/api/admin/logs",
-                    method: "GET",
-                    description: "获取最近的系统日志"
-                },
-                {
-                    path: "/ws",
-                    method: "WS",
-                    description: "WebSocket 实时日志流连接端点（全局）"
-                }
-            ]
-        },
-        {
-            category: "配置管理",
-            endpoints: [
-                {
-                    path: "/api/admin/config",
-                    method: "GET",
-                    description: "获取系统配置，支持通过 key 参数获取特定配置项"
-                },
-                {
-                    path: "/api/admin/config",
-                    method: "POST",
-                    description: "更新系统配置"
-                },
-                {
-                    path: "/api/admin/env",
-                    method: "GET",
-                    description: "获取关键环境变量配置"
-                }
-            ]
-        },
-        {
-            category: "源管理",
-            endpoints: [
-                {
-                    path: "/api/admin/sources",
-                    method: "GET",
-                    description: "获取所有 JS 和 CatVod 源列表"
-                },
-                {
-                    path: "/api/admin/sources/validate",
-                    method: "POST",
-                    description: "验证源文件的格式和必要字段"
-                },
-                {
-                    path: "/api/admin/sources/syntax",
-                    method: "POST",
-                    description: "检查源文件的语法正确性"
-                },
-                {
-                    path: "/api/admin/sources/template",
-                    method: "GET",
-                    description: "获取标准源文件模板"
-                },
-                {
-                    path: "/api/admin/sources/libs",
-                    method: "GET",
-                    description: "获取爬虫相关库函数和解析规则说明"
-                }
-            ]
-        },
-        {
-            category: "文件管理",
-            endpoints: [
-                {
-                    path: "/api/admin/files/list",
-                    method: "GET",
-                    description: "列出指定目录下的文件和文件夹"
-                },
-                {
-                    path: "/api/admin/files/read",
-                    method: "GET",
-                    description: "读取指定文件的内容"
-                },
-                {
-                    path: "/api/admin/files/write",
-                    method: "POST",
-                    description: "写入内容到指定文件"
-                },
-                {
-                    path: "/api/admin/files/delete",
-                    method: "DELETE",
-                    description: "删除指定的文件"
-                }
-            ]
-        },
-        {
-            category: "数据库管理",
-            endpoints: [
-                {
-                    path: "/api/admin/db/query",
-                    method: "POST",
-                    description: "执行 SQL 查询语句"
-                },
-                {
-                    path: "/api/admin/db/tables",
-                    method: "GET",
-                    description: "获取数据库所有表名"
-                },
-                {
-                    path: "/api/admin/db/tables/:table/schema",
-                    method: "GET",
-                    description: "获取指定表的结构定义"
-                }
-            ]
-        }
-    ];
+// API 文档：从 @fastify/swagger 生成的 OpenAPI 规范动态导出，与 Swagger UI 数据同源
+const OPENAPI_METHODS = ['get', 'post', 'put', 'delete', 'patch'];
 
-    return reply.send(apiDocs);
+export async function getApiDocs(req, reply) {
+    const spec = req.server.swagger();
+    const byCategory = new Map();
+    const push = (category, ep) => {
+        if (!byCategory.has(category)) byCategory.set(category, []);
+        byCategory.get(category).push(ep);
+    };
+
+    for (const [path, pathItem] of Object.entries(spec.paths || {})) {
+        const methods = Object.keys(pathItem).filter((m) => OPENAPI_METHODS.includes(m));
+        if (methods.length === 0) continue;
+        // fastify.all 通配路由会在规范里展开为全方法条目，聚合为一条 ALL 展示
+        const entries = methods.length > 5
+            ? [{method: 'ALL', op: pathItem[methods[0]]}]
+            : methods.map((m) => ({method: m, op: pathItem[m]}));
+
+        for (const {method, op} of entries) {
+            const category = Array.isArray(op.tags) && op.tags.length > 0 ? op.tags[0] : '其他';
+            const params = {};
+            for (const p of op.parameters || []) {
+                params[p.name] = {
+                    type: p.schema?.type || p.in || 'string',
+                    description: p.description,
+                    ...(p.required ? {required: true} : {}),
+                };
+            }
+            const bodyProps = op.requestBody?.content?.['application/json']?.schema?.properties || {};
+            for (const [name, prop] of Object.entries(bodyProps)) {
+                params[name] = {
+                    type: prop.type || 'json',
+                    description: prop.description,
+                    ...(op.requestBody.required ? {required: true} : {}),
+                };
+            }
+            push(category, {
+                path,
+                method: method.toUpperCase(),
+                description: op.summary || op.description || '',
+                ...(Object.keys(params).length > 0 ? {params} : {}),
+            });
+        }
+    }
+
+    // 分类按 spec.tags 声明顺序输出；未归属 tag 的排入「其他」
+    const result = (spec.tags || [])
+        .map((t) => ({category: t.name, endpoints: byCategory.get(t.name) || []}))
+        .filter((c) => c.endpoints.length > 0);
+    const others = byCategory.get('其他');
+    if (others) result.push({category: '其他', endpoints: others});
+    return reply.send(result);
 }
