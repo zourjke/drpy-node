@@ -10,6 +10,16 @@ const RKEY = typeof (key) !== 'undefined' && key ? key : 'drpyS_' + (rule.title 
  * @returns {string|DocumentFragment|*}
  */
 async function request(url, obj = {}, ocr_flag = false) {
+    // 自请求回环优化：如果请求指向自己服务（公网域名），自动替换为 localhost 回环访问
+    // 目的：解决 NAT/路由器不支持发夹转换时，服务器自己请求自己的公网域名失败的问题
+    // 注：不改变原始 url 字符串的语义（只在本函数内替换），确保脚本 urljoin 等拼接仍然返回公网URL
+    if (typeof _SELF_REQ_HOST !== 'undefined' && typeof _SELF_LOOPBACK !== 'undefined'
+        && _SELF_REQ_HOST && _SELF_LOOPBACK && url && typeof url === 'string'
+        && (url.startsWith(_SELF_REQ_HOST + '/') || url === _SELF_REQ_HOST)) {
+        const _origUrl = url;
+        url = _SELF_LOOPBACK + url.slice(_SELF_REQ_HOST.length);
+        log(`[request] 自请求回环优化: ${_origUrl} -> ${url}`);
+    }
     if (typeof (obj) === 'undefined' || !obj || (typeof obj === 'object' && obj !== null && Object.keys(obj).length === 0)) {
         let fetch_params = {};
         let headers = {
