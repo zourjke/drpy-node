@@ -3,6 +3,7 @@
  * 提供百度网盘分享链接解析、文件下载、保存等功能
  * 支持分享链接验证、文件列表获取、下载地址生成等操作
  */
+import {log} from '../log.js';
 import req from '../req.js';
 import {ENV} from '../env.js';
 import COOKIE from '../cookieManager.js';
@@ -15,6 +16,27 @@ import {PassThrough} from 'stream';
  * 百度网盘处理类
  * 负责处理百度网盘分享链接的解析、验证、文件操作等功能
  */
+// 所有 BaiduHandler 实例共享的清理目标集合（WeakRef 不阻止实例被 GC 回收）
+const baiduCleanupTargets = new Set();
+let baiduCleanupTimer = null;
+
+function ensureBaiduCleanupTimer() {
+    if (baiduCleanupTimer) return;
+    baiduCleanupTimer = setInterval(() => {
+        for (const ref of [...baiduCleanupTargets]) {
+            const inst = ref.deref();
+            if (!inst) {
+                baiduCleanupTargets.delete(ref); // 实例已被 GC，顺手清掉登记项
+                continue;
+            }
+            try {
+                Promise.resolve(inst.clearSaveDir()).catch(() => {});
+            } catch {}
+        }
+    }, 2 * 60 * 60 * 1000);
+    baiduCleanupTimer.unref?.();
+}
+
 class BaiduHandler {
     /**
      * 构造函数 - 初始化百度网盘处理器
@@ -38,13 +60,22 @@ class BaiduHandler {
         this.subtitleExts = ['.srt', '.ass', '.scc', '.stl', '.ttml'];
         // 支持的视频文件扩展名
         this.subvideoExts = ['.mp4', '.mkv', '.avi', '.rmvb', '.mov', '.flv', '.wmv', '.webm', '.3gp', '.mpeg', '.mpg', '.ts', '.mts', '.m2ts', '.vob', '.divx', '.xvid', '.m4v', '.ogv', '.f4v', '.rm', '.asf', '.dat', '.dv', '.m2v'];
-        // 2小时自动清理保存目录
-        this.cleanupInterval = setInterval(() => {
-            this.clearSaveDir();
-        }, 2 * 60 * 60 * 1000);
-        // 不阻止进程退出
-        if (this.cleanupInterval.unref) {
-            this.cleanupInterval.unref();
+        // 2小时自动清理保存目录：改为所有实例共享的全局单例定时器 (L5)。
+        // 历史上每个实例自起一个 interval 且从不 clear，规则缓存驱逐重建后旧定时器永驻。
+        // 用 WeakRef 集合登记实例：不钉住 GC、进程内始终只有 1 个常驻清理循环。
+        baiduCleanupTargets.add(new WeakRef(this));
+        ensureBaiduCleanupTimer();
+    }
+
+    /**
+     * 释放本实例参与的清理登记（供缓存层 dispose 钩子调用）
+     */
+    destroy() {
+        for (const ref of baiduCleanupTargets) {
+            if (ref.deref() === this) {
+                baiduCleanupTargets.delete(ref);
+                break;
+            }
         }
     }
 
@@ -61,7 +92,7 @@ class BaiduHandler {
      * @param {string} newCookie - 新的Cookie值
      */
     set cookie(newCookie) {
-        console.log('更新cookie');
+        log('更新cookie');
         this._cookie = newCookie;
     }
 
@@ -216,9 +247,9 @@ class BaiduHandler {
 
             if (shareVerify.errno !== 0) {
                 if (shareVerify.errno === -62 || shareVerify.errno === -9) {
-                    console.log('提取码错误');
+                    log('提取码错误');
                 }
-                console.log('验证提取码失败');
+                log('验证提取码失败');
             }
 
             // 更新cookie中的BDCLND
@@ -227,12 +258,12 @@ class BaiduHandler {
                 if (cookie.length > 0 && !cookie.endsWith(';')) cookie += '; ';
                 cookie += `BDCLND=${shareVerify.randsk}`;
                 this.cookie = cookie;
-                console.log('已更新randsk到cookie中的BDCLND');
+                log('已更新randsk到cookie中的BDCLND');
             }
 
             return shareVerify;
         } catch (error) {
-            console.log('验证分享链接失败:', error.message);
+            log('验证分享链接失败:', error.message);
             throw error;
         }
     }
@@ -267,9 +298,9 @@ class BaiduHandler {
 
             if (listData.errno !== 0) {
                 if (listData.errno === -9) {
-                    console.log('提取码错误');
+                    log('提取码错误');
                 }
-                console.log('获取文件列表失败');
+                log('获取文件列表失败');
             }
 
             // 设置缓存
@@ -285,7 +316,7 @@ class BaiduHandler {
 
             return this.shareTokenCache[shareData.shareId];
         } catch (error) {
-            console.log('获取分享token失败:', error.message);
+            log('获取分享token失败:', error.message);
             throw error;
         }
     }
@@ -624,10 +655,10 @@ class BaiduHandler {
             }, headers, 'post');
 
             if (deleteResp.errno === 0) {
-                console.log('清理保存目录成功');
+                log('清理保存目录成功');
             }
         } catch (error) {
-            console.log('清理保存目录失败:', error.message);
+            log('清理保存目录失败:', error.message);
             return;
         }
     }
