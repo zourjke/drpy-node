@@ -1,3 +1,4 @@
+import {log, logError} from '../utils/log.js';
 import axios, {toFormData} from 'axios';
 import axiosX from './axios.min.js';
 import {createHttpsInstance, httpsAgent} from './fetchAxios.js';
@@ -31,7 +32,7 @@ const maxSockets = 64;
 const _axios = createAxiosInstance({maxSockets: maxSockets});
 let $axios;
 const dsReqLib = Number(process.env.DS_REQ_LIB) || 0;
-console.log('[drpyInject]DS/CAT源底层req实现 DS_REQ_LIB (0 fetch 1 axios):', dsReqLib);
+log('[drpyInject]DS/CAT源底层req实现 DS_REQ_LIB (0 fetch 1 axios):', dsReqLib);
 // 配置 axios 使用代理
 
 if (dsReqLib === 0) {
@@ -51,10 +52,10 @@ if (dsReqLib === 0) {
 function RequestInterceptor(config) {
     // 生成 curl 命令
     const show_curl = Number(ENV.get('show_curl', '0')) === 1;
-    // console.log(`拦截器 show_curl: ${show_curl}`);
+    // log(`拦截器 show_curl: ${show_curl}`);
     const curlCommand = generateCurlCommand(config);
     if (show_curl) {
-        console.log(`Generated cURL command:\n${curlCommand}`);
+        log(`Generated cURL command:\n${curlCommand}`);
     }
     return config;
 }
@@ -125,7 +126,7 @@ function localDelete(storage, key) {
 }
 
 async function request(url, opt = {}) {
-    // console.log('进入了req...');
+    // log('进入了req...');
     // 解构参数并设置默认值
     const {
         data: _data = null,
@@ -187,7 +188,14 @@ async function request(url, opt = {}) {
         data = toFormData(data);
     }
     if (data) {
-        console.log(`[req] postType:${effectivePostType},data:`, data);
+        log(`[req] postType:${effectivePostType},data:`, data);
+    }
+
+    // GET/HEAD 不允许带 body（axios 1.x / undici 规范），
+    // 兼容老 catvod 源 data: postData || {} 的写法，避免抛
+    // "Request with GET/HEAD method cannot have body."
+    if (['get', 'head'].includes(String(method).toLowerCase()) && data) {
+        data = null;
     }
 
     // 配置代理或 HTTPS Agent
@@ -198,7 +206,7 @@ async function request(url, opt = {}) {
     const respType = returnBuffer ? 'arraybuffer' : 'arraybuffer';
 
     if (ENV.get('show_req', '0') === '1') {
-        console.log(`req[${method}]: ${url} headers: ${JSON.stringify(headers)} data: ${JSON.stringify(data)}`);
+        log(`req[${method}]: ${url} headers: ${JSON.stringify(headers)} data: ${JSON.stringify(data)}`);
     }
     try {
         // 发送请求
@@ -225,7 +233,7 @@ async function request(url, opt = {}) {
             const buffer = Buffer.from(responseData);
 
             if (encoding && encoding.toLowerCase() !== 'utf-8') {
-                // console.log('Detected encoding:', encoding);
+                // log('Detected encoding:', encoding);
                 responseData = iconv.decode(buffer, encoding);
             } else {
                 responseData = buffer.toString('utf-8');
@@ -251,21 +259,23 @@ async function request(url, opt = {}) {
         return {code: resp.status, headers: resHeader, content: responseData};
     } catch (error) {
         const {response: resp} = error;
-        console.error(`[request] Request error: ${error.message}`);
+        logError(`[request] Request error: ${error.message}`);
         let responseData = '';
-        // console.log('responseData:',responseData);
-        try {
-            const buffer = Buffer.from(resp.data);
-            if (encoding && encoding.toLowerCase() !== 'utf-8') {
-                // console.log('Detected encoding:', encoding);
-                responseData = iconv.decode(buffer, encoding);
-            } else {
-                responseData = buffer.toString('utf-8');
+        // log('responseData:',responseData);
+        if (resp) {
+            try {
+                const buffer = Buffer.from(resp.data);
+                if (encoding && encoding.toLowerCase() !== 'utf-8') {
+                    // log('Detected encoding:', encoding);
+                    responseData = iconv.decode(buffer, encoding);
+                } else {
+                    responseData = buffer.toString('utf-8');
+                }
+            } catch (e) {
+                logError(`[request] get error response Text failed: ${e.message}`);
             }
-        } catch (e) {
-            console.error(`[request] get error response Text failed: ${e.message}`);
         }
-        // console.log('responseData:',responseData);
+        // log('responseData:',responseData);
         return {
             code: resp?.status || 500,
             headers: resp?.headers || {},
@@ -331,7 +341,7 @@ function aes(mode, encrypt, input, inBase64, key, iv, outBase64) {
         const outBuf = Buffer.concat([cipher.update(inBuf), cipher.final()]);
         return outBase64 ? base64EncodeBuf(outBuf) : outBuf.toString('utf8');
     } catch (error) {
-        console.log('[aes]', error);
+        log('[aes]', error);
     }
     return '';
 }
@@ -358,7 +368,7 @@ function des(mode, encrypt, input, inBase64, key, iv, outBase64) {
         const outBuf = Buffer.concat([cipher.update(inBuf), cipher.final()]);
         return outBase64 ? base64EncodeBuf(outBuf) : outBuf.toString('utf8');
     } catch (error) {
-        console.log('[des]', error);
+        log('[des]', error);
     }
     return '';
 }
@@ -412,7 +422,7 @@ function rsa(mode, pub, encrypt, input, inBase64, key, outBase64) {
         }
         return outBase64 ? base64EncodeBuf(outBuf) : outBuf.toString('utf8');
     } catch (error) {
-        console.log('[rsa]', error);
+        log('[rsa]', error);
     }
     return '';
 }
