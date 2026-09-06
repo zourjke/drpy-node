@@ -1,4 +1,5 @@
-/**
+/**import {log, logError} from '../utils/log.js';
+
  * 远程文件代理控制器模块
  * 提供远程文件的 HTTP 直链代理访问功能
  * @module file-proxy-controller
@@ -32,7 +33,7 @@ export default (fastify, options, done) => {
      * GET /file-proxy/health - 检查远程文件代理服务状态
      */
     fastify.get('/file-proxy/health', async (request, reply) => {
-        // console.log(`[fileProxyController] Health check request`);
+        // log(`[fileProxyController] Health check request`);
         
         setCorsHeaders(reply);
         
@@ -65,7 +66,7 @@ export default (fastify, options, done) => {
 
             const { url: urlParam, headers: headersParam } = request.query;
 
-            // console.log(`[fileProxyController] ${request.method} request for URL: ${urlParam}`);
+            // log(`[fileProxyController] ${request.method} request for URL: ${urlParam}`);
 
             // 验证必需参数
             if (!urlParam) {
@@ -123,14 +124,14 @@ export default (fastify, options, done) => {
                     return reply.send(remoteResponse.stream);
 
                 } catch (requestError) {
-                    console.error('[fileProxyController] Remote request error:', requestError);
+                    logError('[fileProxyController] Remote request error:', requestError);
                     return reply.status(502).send({ 
                         error: `Failed to fetch remote file: ${requestError.message}` 
                     });
                 }
 
             } catch (error) {
-                console.error('[fileProxyController] Request processing error:', error);
+                logError('[fileProxyController] Request processing error:', error);
                 return reply.status(500).send({ error: error.message });
             }
         }
@@ -148,7 +149,7 @@ export default (fastify, options, done) => {
 
         const { url: urlParam, headers: headersParam } = request.query;
 
-        // console.log(`[fileProxyController] Info request for URL: ${urlParam}`);
+        // log(`[fileProxyController] Info request for URL: ${urlParam}`);
 
         // 验证必需参数
         if (!urlParam) {
@@ -197,14 +198,14 @@ export default (fastify, options, done) => {
                 return reply.send(fileInfo);
 
             } catch (requestError) {
-                console.error('[fileProxyController] Remote info request error:', requestError);
+                logError('[fileProxyController] Remote info request error:', requestError);
                 return reply.status(502).send({ 
                     error: `Failed to get remote file info: ${requestError.message}` 
                 });
             }
 
         } catch (error) {
-            console.error('[fileProxyController] Info request processing error:', error);
+            logError('[fileProxyController] Info request processing error:', error);
             return reply.status(500).send({ error: error.message });
         }
     });
