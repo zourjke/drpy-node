@@ -1,4 +1,5 @@
-/**
+/**import {log, logError} from '../utils/log.js';
+
  * HTTP请求代理控制器模块
  * 提供HTTP请求代理、AI接口和请求转发功能
  * @module http-controller
@@ -52,7 +53,7 @@ export default (fastify, options, done) => {
         }
         
         // 记录请求日志
-        console.log(`[httpController] url: ${url} | method: ${method} | params: ${JSON.stringify(params)} | data: ${JSON.stringify(data)} | headers: ${JSON.stringify(headers)}`);
+        log(`[httpController] url: ${url} | method: ${method} | params: ${JSON.stringify(params)} | data: ${JSON.stringify(data)} | headers: ${JSON.stringify(headers)}`);
         
         try {
             // 发送HTTP请求
@@ -83,7 +84,7 @@ export default (fastify, options, done) => {
             }
         } catch (error) {
             // 处理请求错误
-            // console.error(error);
+            // logError(error);
             if (error.response) {
                 // 服务器返回了非 2xx 状态码
                 reply.status(error.response.status).send({
@@ -118,7 +119,7 @@ export default (fastify, options, done) => {
             ],
             model: 'gpt-4o-mini-2024-07-18'
         };
-        // console.log(JSON.stringify(postFields));
+        // log(JSON.stringify(postFields));
         try {
             // 发送AI请求
             const response = await _axios.post(
@@ -160,7 +161,7 @@ export default (fastify, options, done) => {
             }
             
             // 记录转发日志
-            console.log(`Forwarding request to: ${targetUrl}`);
+            log(`Forwarding request to: ${targetUrl}`);
             
             // 处理请求头
             const headers = keysToLowerCase({
@@ -189,7 +190,7 @@ export default (fastify, options, done) => {
                 .send(response.data);
         } catch (error) {
             // 处理转发错误
-            console.error('Error forwarding request:', error.message);
+            logError('Error forwarding request:', error.message);
             if (error.response) {
                 // 转发服务器响应错误
                 reply
