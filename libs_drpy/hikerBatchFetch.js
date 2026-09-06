@@ -1,14 +1,15 @@
 /**
  * Hiker批量请求工具
- * 
+ *
  * 功能：提供高性能的批量HTTP请求功能，支持并发控制和错误处理
- * 包含两种实现方式：基于fastq和基于DsQueue的批量请求
- * 
+ * P1 重构：移除无人使用的 batchFetch4(DsQueue 版本) 及其依赖 dsQueue.js，
+ * 仅保留生产在役的 batchFetch3(fastq)。
+ *
  * @author drpy
- * @version 1.0.0
+ * @version 1.1.0
  */
 
-import DsQueue from './dsQueue.js';
+import {log} from '../utils/log.js';
 import fastq from "fastq";
 import createAxiosInstance from "../utils/createAxiosAgent.js";
 
@@ -75,7 +76,7 @@ export const batchFetch3 = async (items, maxWorkers = 16, timeoutConfig = 5000, 
             callback(null); // 通知任务成功完成
         } catch (error) {
             // 记录错误日志
-            console.log(`[batchFetch][error] ${item.url}: ${error}`);
+            log(`[batchFetch][error] ${item.url}: ${error}`);
             results[index] = null; // 记录错误结果为null
             callback(null); // 即使出错，也调用回调，不中断任务队列
         }
@@ -104,55 +105,8 @@ export const batchFetch3 = async (items, maxWorkers = 16, timeoutConfig = 5000, 
     }
 
     let t2 = (new Date()).getTime(); // 记录结束时间
-    console.log(`fastq 批量请求 ${items[0].url} 等 ${items.length}个地址 耗时${t2 - t1}毫秒:`);
+    log(`fastq 批量请求 ${items[0].url} 等 ${items.length}个地址 耗时${t2 - t1}毫秒:`);
 
     return results;
 };
 
-/**
- * 基于DsQueue的批量请求函数（版本4）
- * 使用自定义队列实现，适合中等规模的并发请求
- * 
- * @param {Array} items - 请求项数组，每项包含url和options
- * @param {number} maxWorkers - 最大并发工作线程数，默认5
- * @param {number} timeoutConfig - 请求超时时间（毫秒），默认5000
- * @returns {Promise<Array>} 返回结果数组，成功返回响应数据，失败返回null
- */
-export const batchFetch4 = async (items, maxWorkers = 5, timeoutConfig = 5000) => {
-    let t1 = (new Date()).getTime(); // 记录开始时间
-
-    // 获取全局 timeout 设置
-    const timeout = timeoutConfig;
-
-    const results = new Array(items.length).fill(null); // 关键改动：提前初始化 results 数组
-    const queue = new DsQueue(maxWorkers); // 关键改动：在整个函数中只创建一个队列
-
-    // 为每个请求项添加任务到队列
-    items.forEach((item, index) => {
-        queue.add(async () => {
-            try {
-                // 发送HTTP请求
-                const response = await _axios(
-                    Object.assign({}, item?.options, {
-                        url: item.url,
-                        method: item?.options?.method || 'GET',        // 默认GET方法
-                        timeout: item?.options?.timeout || timeout,    // 使用配置的超时时间
-                        responseType: 'text',                          // 响应类型为文本
-                    }),
-                );
-                results[index] = response.data; // 保存成功结果
-            } catch (error) {
-                // 记录错误日志
-                console.log(`[batchFetch][error] ${item.url}: ${error}`);
-                results[index] = null; // 记录错误结果为null
-            }
-        });
-    });
-
-    // 等待所有任务完成
-    await queue.onIdle();
-    let t2 = (new Date()).getTime(); // 记录结束时间
-    console.log(`DsQueue 批量请求 ${items[0].url} 等 ${items.length}个地址 耗时${t2 - t1}毫秒:`);
-
-    return results;
-};
