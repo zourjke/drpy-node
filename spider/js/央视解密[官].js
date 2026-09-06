@@ -3,39 +3,77 @@
   searchable: 1,
   filterable: 1,
   quickSearch: 0,
-  title: '央视大全',
+  title: '央视解密[官]',
+  logo: 'https://p2.img.cctvpic.com/photoAlbum/page/performance/img/2019/8/28/1566979406603_367.png',
   lang: 'ds',
   isProxyPath: true,
-  more: {
-      parseApi: [
-        {
-            host: 'cctv://(.+)',
-            flag: 'CCTV'
-        },
-        {
-            host: 'cctv4k://(.+)',
-            flag: 'CCTV4K'
-        },
-        {
-            host: 'cctvlive://(.+)',
-            flag: 'CCTV直播'
-        },
-      ]
-  },
-
 })
 */
 
-// const {processFile, indexHtml} = $.require('./_lib.cntv.js');
-const {parseCCTVUrl, detectInputType, getVideoInfoByPid} = require('./_lib.cntv-urlparse.cjs');
-const {processFile} = require('./_lib.cntv2026.cjs');
-const {indexHtml} = $.require('./_lib.cntv.js');
-const {setH5Str} = $.require('./_lib.cntv.live.js');
+// 央视大全点播结构（移植自 央视大全[官].js：分类/筛选/搜索/二级剧集解析）
+// + 央视频 demo 的播放算法（点播 h5e 加密流、直播 cdrm，均经 cctv-h5e 插件解密）
+// 依赖插件 cctv-h5e（插件市场安装，默认 127.0.0.1:7796；自定义过端口的改下面常量）
+// 链路：lazy 拼主服务 /proxy 回调 → proxy_rule 转发插件 /m3u8 与 /ts（m3u8 里的行带 base 回流主服务）
+// → 客户端播放器只访问主服务端口，插件仅本机通信
+const H5E_API = 'http://127.0.0.1:7796';
+// 模块名 encode + 尾部斜杠（/proxy/:module/* 的通配段必须有落点）
+const MODULE_PROXY_PREFIX = '/proxy/' + encodeURIComponent('央视解密[官]') + '/?do=h5e&u=';
+// 直播播放回调：lazy 直接拼频道 id，proxy 按 do=live 分流
+const MODULE_PROXY_PREFIX_LIVE = '/proxy/' + encodeURIComponent('央视解密[官]') + '/?do=live&ch=';
+
+const HOST = 'https://api.cntv.cn';
+
+// 直播频道清单：与 cctv-h5e 插件 /live/channels 一致（ch 值同时用作播放 id）
+const LIVE_CHANNELS = [
+    ['cctv1', 'CCTV-1 综合'], ['cctv2', 'CCTV-2 财经'], ['cctv3', 'CCTV-3 综艺'],
+    ['cctv4', 'CCTV-4 中文国际'], ['cctv5', 'CCTV-5 体育'], ['cctv5plus', 'CCTV-5+ 体育赛事'],
+    ['cctv6', 'CCTV-6 电影'], ['cctv7', 'CCTV-7 国防军事'], ['cctv8', 'CCTV-8 电视剧'],
+    ['cctv9', 'CCTV-9 纪录'], ['cctv10', 'CCTV-10 科教'], ['cctv11', 'CCTV-11 戏曲'],
+    ['cctv12', 'CCTV-12 社会与法'], ['cctv13', 'CCTV-13 新闻'], ['cctv15', 'CCTV-15 音乐'],
+    ['cctv16', 'CCTV-16 奥林匹克'], ['cctv17', 'CCTV-17 农业农村'],
+];
+
+// 点播 guid（32位hex）与直播频道 id 天然不冲突，播放分流按 id 特征判定，不依赖 flag
+const LIVE_IDS = new Set(LIVE_CHANNELS.map(([c]) => c));
+
+function pickH5eUrl(info) {
+    const mf = info && info.manifest;
+    if (!mf) return '';
+    let url = mf.hls_h5e_url || mf.hls_enc_url || mf.hls_enc2_url || '';
+    if (url) url = url.replace(/^(https?:\/\/)[^/]+\/asp\/enc2\//, '$1drm.cntv.vod.dnsv1.com/asp/enc2/');
+    return url;
+}
+
+async function fetchVideoInfo(guid) {
+    const body = await request(`https://vdn.apps.cntv.cn/api/getHttpVideoInfo.do?pid=${guid}`);
+    return JSON.parse(body);
+}
+
+// 正则取文本
+function getRegexText(text, regexText, index) {
+    const match = text.match(new RegExp(regexText, 'ms'));
+    return match ? (match[index] || '') : '';
+}
+
+function removeHtml(txt) {
+    return txt.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ');
+}
+
+// 对象转查询串（与沙箱 drpyCustom.js 的 objectToQueryString 行为一致，自带一份便于源文件独立调试）
+function encodeIfContainsSpecialChars(value) {
+    return /[&=?#]/.test(value) ? encodeURIComponent(value) : value;
+}
+
+function objectToQueryString(obj) {
+    return Object.entries(obj)
+        .map(([key, value]) => `${encodeIfContainsSpecialChars(key)}=${encodeIfContainsSpecialChars(String(value))}`)
+        .join('&');
+}
+
 var rule = {
-    title: '央视大全',
+    title: '央视解密[官]',
     host: 'https://api.cntv.cn',
     homeUrl: '/lanmu/columnSearch?&fl=&fc=&cid=&p=1&n=500&serviceId=tvcctv&t=json',
-    // url: '/list/getVideoAlbumList?fyfilter&area=&letter=&n=24&serviceId=tvcctv&topv=1&t=json',
     url: '/list/getVideoAlbumList?p=fypage&n=24&serviceId=tvcctv&topv=1&t=json',
     searchUrl: 'https://search.cctv.com/ifsearch.php?page=fypage&qtext=**&sort=relevance&pageSize=20&type=video&vtime=-1&datepid=1&channel=&pageflag=0&qtext_str=**',
     searchable: 1,
@@ -50,52 +88,8 @@ var rule = {
     },
     timeout: 10000,
     play_parse: true,
-    lazy: async function () {
-        let {input, flag, getProxyUrl} = this;
-        log(input);
-        // log(flag);
-        let guid = '';
-        let url = '';
-        if (flag === 'CCTV') {
-            guid = input;
-            url = await getM3u8(guid, getProxyUrl);
-        } else if (flag === 'CCTV4K') {
-            guid = input;
-            // url = 'https://hls09.cntv.myhwcdn.cn/asp/hls/4000/0303000a/3/default/' + guid + '/4000.m3u8';
-            url = await getM3u8(guid, getProxyUrl);
-        } else if (flag === 'CCTV直播') {
-            let channel = input.split('/').slice(-2)[0];
-            url = `https://vdnx.live.cntv.cn/api/v3/vdn/live?channel=${channel}&vn=1`;
-            // log(channel);
-            let authKey = getAuthKey(channel);
-            let html = await request(url, {headers: {'auth-key': authKey}});
-            let json = JSON.parse(html);
-            let indexM3u8 = json.manifest.hls_cdrm.split('?')[0]; // 不去除问号后面的内容的话只能获取到最高720p分辨率
-            // log(indexM3u8);
-            html = await request(indexM3u8);
-            let hdUrl = html.split('\n').find(i => i && !i.startsWith('#'));
-            hdUrl = urljoin(indexM3u8, hdUrl);
-            // log(html);
-            // log(hdUrl);
-            return {
-                parse: 0,
-                url: getProxyUrl() + '&url=' + base64Encode(hdUrl) + '#.m3u8',
-                header: {'user-agent': PC_UA, 'referer': 'https://tv.cctv.com/', 'origin': 'https://tv.cctv.com/'}
-            }
-        } else {
-            let html = await request(input);
-            guid = getRegexText(html, 'var\\sguid\\s*=\\s*"(.+?)";', 1);
-            url = await getM3u8(guid, getProxyUrl);
-        }
-        return {
-            parse: 0,
-            url: url,
-            headers: rule.headers
-        }
-    },
     limit: 6,
     double: false,
-
     推荐: async function () {
         let {input, publicUrl} = this;
         let liveImgUrl = urljoin(publicUrl, './images/lives.jpg');
@@ -104,14 +98,13 @@ var rule = {
         vods.unshift({
             vod_name: '央视直播',
             vod_pic: liveImgUrl,
-            vod_id: 'https://tv.cctv.com/epg/index.shtml#央视直播',
-            vod_remarks: 'CCTV台',
+            vod_id: 'live',
+            vod_remarks: 'CCTV台·插件解密',
         });
-        return vods
+        return vods;
     },
-
     一级: async function () {
-        let {input, MY_CATE, MY_FL, MY_PAGE} = this;
+        let {MY_CATE, MY_FL, MY_PAGE} = this;
         let page_count = 24;
         let queryString = objectToQueryString(MY_FL);
         let year_prefix = ''  //栏目大全的年月筛选过滤
@@ -128,7 +121,6 @@ var rule = {
             }
             let html = await request(url);
             return get_list_lm(html, MY_CATE, year_prefix)
-
         } else if (MY_CATE === '4K专区') {
             let cid = 'CHAL1558416868484111'
             let url = `${HOST}/NewVideo/getLastVideoList4K?serviceId=cctv4k&cid=${cid}&p=${MY_PAGE}&n=${page_count}&t=json`;
@@ -142,7 +134,7 @@ var rule = {
                 "动画片": "CHAL1460955899450127",
             };
             let channelid = channelMap[MY_CATE];
-            let url = input + `&channelid=${channelid}`;
+            let url = this.input + `&channelid=${channelid}`;
             if (queryString) {
                 url += `&${queryString}`;
             }
@@ -151,35 +143,20 @@ var rule = {
         }
     },
     二级: async function () {
-        let {orId, publicUrl, pdfa} = this;
-        // log('orId:', orId);
+        let {orId} = this;
         let vid = orId;
-        if (vid.includes('#央视直播')) {
-            let html = await request(vid);
-            let video_list = [];
-            let list = pdfa(html, '#jiemudan01&&.channel_con&&ul&&li');
-            // log(list);
-            list.forEach((it) => {
-                let _title = pdfh(it, 'img&&title');
-                let _url = `https://tv.cctv.com/live/${_title}/`;
-                video_list.append(`${_title}$${_url}`);
-            });
-            let liveImgUrl = urljoin(publicUrl, './images/lives.jpg');
-            let vod = {
-                "vod_id": vid,
-                "vod_name": 'CCTV直播频道列表',
-                "vod_pic": liveImgUrl,
-                "type_name": '直播',
-                "vod_year": '',
-                "vod_area": "",
-                "vod_remarks": '只含官方CCTV频道',
-                "vod_actor": '',
-                "vod_director": '',
-                "vod_content": '并非全部高清分辨率，取官方网页版最高分辨率'
+        // 直播频道入口列表：一个 vod，播放标签即各频道（播放走 cctv-h5e 插件解密 cdrm）
+        if (vid === 'live') {
+            return {
+                vod_id: vid,
+                vod_name: 'CCTV直播频道列表',
+                vod_pic: '',
+                type_name: '直播',
+                vod_remarks: '只含官方CCTV频道',
+                vod_content: 'cdrm 加密流经 cctv-h5e 插件解密播放',
+                vod_play_from: 'CCTV直播',
+                vod_play_url: LIVE_CHANNELS.map(([ch, name]) => `${name}$${ch}`).join('#'),
             };
-            vod['vod_play_from'] = 'CCTV直播';
-            vod['vod_play_url'] = video_list.join('#');
-            return vod
         }
         let year_prefix = '';
         if (orId.includes('$$$')) {
@@ -223,15 +200,12 @@ var rule = {
                     html = await request(lastVideo);
                     let patternTxt;
                     if (['电视剧', '纪录片', '4K专区'].includes(tid)) {
-                        // 调整为普通捕获组
                         patternTxt = "'title':\\s*'(.+?)',\\n{0,1}\\s*'brief':\\s*'(.+?)',\\n{0,1}\\s*'img':\\s*'(.+?)',\\n{0,1}\\s*'url':\\s*'(.+?)'";
                     } else if (tid === '特别节目') {
-                        // 调整为普通捕获组
                         patternTxt = "class=\"tp1\"><a\\s*href=\"(https://.+?)\"\\s*target=\"_blank\"\\s*title=\"(.+?)\"></a></div>";
                     } else if (tid === '动画片') {
                         patternTxt = `'title':\\s*'(.+?)',\\n{0,1}\\s*'img':\\s*'(.+?)',\\n{0,1}\\s*'brief':\\s*'(.+?)',\\n{0,1}\\s*'url':\\s*'(.+?)'`;
                     } else if (tid === '栏目大全') {
-                        // 调整为普通捕获组
                         patternTxt = "href=\"(.+?)\" target=\"_blank\" alt=\"(.+?)\" title=\".+?\">";
                     }
                     video_list = get_episodes_list_re(html, patternTxt, tid);
@@ -265,59 +239,55 @@ var rule = {
         let html = await request(input);
         return get_list_search(html, '搜索');
     },
-    proxy_rule: async function () {
-        let {input, proxyPath, getProxyUrl} = this;
-        // log('input:', input);
-        // log('proxyPath:', proxyPath);
-        let url = '';
-        let is_live = 0;
-        if (proxyPath) {
-            // const BASE_URL = 'https://dh5.cntv.qcloudcdn.com/'.rstrip('/');
-            // const BASE_URL = 'https://dh5.cntv.myalicdn.com/'.rstrip('/');
-            // url = `${BASE_URL}/${proxyPath}`;
-            url = proxyPath;
-        } else {
-            url = base64Decode(input.split('#')[0]);
-            is_live = 1;
+    lazy: async function (flag, id) {
+        // 直播判定按 id 白名单而非 flag：壳子回传 vod_play_from 形态不可控（缺失/小写/改写均常见），
+        // 而频道 id（cctv1/cctv5plus…）与点播 guid（32位hex）/视频页 URL 天然不冲突
+        const ch = (id || '').toLowerCase();
+        if (LIVE_IDS.has(ch)) {
+            return {parse: 0, url: this.requestHost + MODULE_PROXY_PREFIX_LIVE + ch + '#.m3u8'};
         }
-        log('start proxy:', url);
+        // 点播：id = guid（CCTV/CCTV4K）或视频页 URL（搜索/二级兜底，抓页面提取 var guid）
+        // → getHttpVideoInfo 取 h5e 加密清单 → 主服务 /proxy 回调（客户端只访问主服务端口）
+        // URL 尾部 `#.m3u8` 伪后缀：fragment 不发给服务器，帮按后缀嗅探格式的播放器识别 HLS
         try {
-            const filename = pathLib.basename(new URL(url).pathname);
-            const extension = pathLib.extname(filename).toLowerCase();
-            // log('filename:', filename);
-            // log('extension:', extension);
-            if (extension !== '.ts' && extension !== '.m3u8') {
-                if (filename.endsWith('index.html')) {
-                    return [200, 'text/html', indexHtml]
-                }
-                return [400, 'text/plain', 'Only .ts and .m3u8 files are supported']
+            let guid = id;
+            if (/^https?:\/\//.test(id)) {
+                const html = await request(id);
+                guid = getRegexText(html, 'var\\sguid\\s*=\\s*"(.+?)";', 1);
+                if (!guid) return {parse: 0, url: 'toast://页面未找到视频 guid'};
             }
-            if (is_live && extension === '.m3u8') {
-                // log('处理直播的m3u8地址');
-                let proxy_url = getProxyUrl();
-                let html = await request(url);
-                let m3u8Str = html.split('\n').map((it) => {
-                    if (it && !it.startsWith("#")) {
-                        return proxy_url + '&url=' + base64Encode(urljoin(url, it));
-                    }
-                    return it
-                }).join('\n');
-                // log(m3u8Str);
-                return [200, 'application/vnd.apple.mpegurl', m3u8Str]
-            }
-            const contentType = extension === '.ts' ? 'video/MP2T' : 'application/vnd.apple.mpegurl';
-            // log('url:', url);
-            const buffer = await processFile(url, extension);
-            const headers = {
-                'Content-Disposition': `attachment; filename="${filename}"`,
-                'Content-Type': contentType,
-            }
-            return [200, contentType, buffer, headers]
-
+            const info = await fetchVideoInfo(guid);
+            const h5e = pickH5eUrl(info);
+            if (!h5e) return {parse: 0, url: 'toast://该视频没有 h5e 加密播放列表'};
+            return {parse: 0, url: this.requestHost + MODULE_PROXY_PREFIX + encodeURIComponent(h5e) + '#.m3u8'};
         } catch (e) {
-            log('proxy error:', e.message);
-            return [500, 'text/plain', e.message]
+            log('lazy出错: ' + e.message);
+            return {parse: 0, url: 'toast://播放解析失败: ' + e.message};
         }
+    },
+    proxy_rule: async function (params) {
+        const base = encodeURIComponent(this.requestHost + MODULE_PROXY_PREFIX);
+        if (params.do === 'live') {
+            const ch = (params.ch || '').toLowerCase();
+            if (!ch) return [400, 'text/plain', 'missing ch'];
+            const resp = await req(`${H5E_API}/live/m3u8?ch=${ch}&base=${base}`);
+            if (resp.code !== 200) return [502, 'text/plain', '插件拉取直播 m3u8 失败: ' + resp.code];
+            return [200, 'application/vnd.apple.mpegurl', resp.content];
+        }
+        if (params.do !== 'h5e') return [404, 'text/plain', 'not found'];
+        const target = params.u || params.url || '';
+        if (!target) return [400, 'text/plain', 'missing u'];
+        // target 是 encode 过的绝对地址（. 不被 encode，直接探测后缀）
+        const isM3u8 = /\.m3u8/.test(target);
+        if (isM3u8) {
+            const resp = await req(`${H5E_API}/m3u8?url=${target}&base=${base}`);
+            if (resp.code !== 200) return [502, 'text/plain', '插件拉取 m3u8 失败: ' + resp.code];
+            return [200, 'application/vnd.apple.mpegurl', resp.content];
+        }
+        const resp = await req(`${H5E_API}/ts?u=${target}`, {buffer: 2});
+        if (resp.code !== 200) return [502, 'text/plain', '插件解密分片失败: ' + resp.code];
+        // content 已是 base64，toBytes=1 由框架还原为二进制
+        return [200, 'video/mp2t', resp.content, {}, 1];
     },
 }
 
@@ -366,14 +336,12 @@ function get_list_lm(html, tid, year_prefix) {
         if (url.toString().length > 0) {
             let guids = [tid, title, url, img, id, year, actors, brief, count, desc];
             let guid = guids.join('||');
-            //log(`✅guid的结果: ${guid}`);
             d.push({
                 title: title,
-                desc: desc.includes('》') ? desc.split('》')[1].strip() : desc.strip(),
+                desc: desc.includes('》') ? desc.split('》')[1].trim() : desc.trim(),
                 pic_url: img,
                 url: year_prefix ? year_prefix + '$$$' + guid : guid
             });
-
         }
     });
     return setResult(d)
@@ -421,13 +389,12 @@ function get_list_search(html, tid) {
         let year = it.uploadtime;
         if (url) {
             let guids = [tid, title, url, img, vid, year, '', brief];
-            let guid = "||".join(guids);
+            let guid = guids.join('||');
             d.push({
                 title: title,
                 desc: year,
                 pic_url: img,
                 url: guid,
-
             });
         }
     });
@@ -441,13 +408,13 @@ function get_episodes_list(json_list) {
         let url = vod['guid'];
         let title = vod['title'];
         if (url) {
-            videos.append(title + "$" + url);
+            videos.push(title + "$" + url);
         }
     }
     return videos
 }
 
-// 获取集数列表
+// 获取集数列表（二级剧集兜底：从栏目/专辑网页正则提取）
 function get_episodes_list_re(htmlTxt, patternTxt, tid) {
     const regex = new RegExp(patternTxt, 'gm'); // 全局和多行匹配
     const matches = [...htmlTxt.matchAll(regex)]; // 获取所有匹配项
@@ -468,83 +435,4 @@ function get_episodes_list_re(htmlTxt, patternTxt, tid) {
     }
 
     return videos;
-}
-
-function removeHtml(txt) {
-    // 使用正则表达式移除 HTML 标签
-    const htmlTagRegex = /<[^>]+>/g;
-    txt = txt.replace(htmlTagRegex, '');
-
-    // 替换 "&nbsp;" 为普通空格
-    return txt.replace(/&nbsp;/g, ' ');
-}
-
-// 正则取文本
-function getRegexText(text, regexText, index) {
-    let returnTxt = "";
-    const regex = new RegExp(regexText, 'ms'); // 'm' 多行匹配, 's' 让 '.' 匹配换行符
-    const match = text.match(regex);
-
-    if (!match) {
-        returnTxt = "";
-    } else {
-        returnTxt = match[index] || "";
-    }
-
-    return returnTxt;
-}
-
-async function getM3u8(pid, getProxyUrl) {
-    const info = await getVideoInfoByPid(pid);
-    const proxy_path = info.download_url;
-    log('[getM3u8] proxy_path:', proxy_path);
-    return getProxyUrl().split('?')[0].rstrip('/') + '/' + proxy_path;
-}
-
-async function getM3u8Old(pid, getProxyUrl) {
-    const url = `https://vdn.apps.cntv.cn/api/getHttpVideoInfo.do?pid=${pid}`;
-    const htmlTxt = await request(url);
-    const jo = JSON.parse(htmlTxt);
-    const link = jo.hls_url.trim();
-    const link1 = jo.manifest.hls_h5e_url.trim();
-    const urlPrefix = link.match(/(http[s]?:\/\/[a-zA-Z0-9.]+)\//)?.[1] || '';
-    let newLink = link1.split('?')[0];
-    newLink = newLink.replace('https://dh5.cntv.qcloudcdn.com', 'https://dh5.cntv.myhwcdn.cn');
-    const htmlResponse = await request(newLink);
-    const content = htmlResponse.trim();
-    const arr = content.split('\n');
-    const subUrl = arr[arr.length - 1].split('/');
-    const maxVideo = subUrl[subUrl.length - 1].replace('.m3u8', '');
-    let hdUrl = link.replaceAll('main', maxVideo);
-    if (hdUrl === '') {
-        hdUrl = '2000';
-    }
-    hdUrl = hdUrl.replace(urlPrefix, 'https://newcntv.qcloudcdn.com');
-    /*
-    const hdResponse = await request(hdUrl);
-    if (hdResponse) {
-        return hdUrl.split('?')[0];
-    } else {
-        return '';
-    }
-    */
-    return hookM3u8(hdUrl.split('?')[0], getProxyUrl);
-}
-
-function hookM3u8(url, getProxyUrl) {
-    let proxy_path = url.replace('https://newcntv.qcloudcdn.com', '').replace('/asp/hls/', '/asp/h5e/hls/');
-    let proxy_url = getProxyUrl().split('?')[0].rstrip('/') + proxy_path;
-    // log('proxy_url:', proxy_url);
-    log('typeof WebAssembly:', typeof WebAssembly);
-    return proxy_url
-}
-
-function getAuthKey(channel) {
-    // channel 如 cctv1
-    let time = new Date().getTime();
-    let key = "a4220a71b31746908fa3e7fdd7a6852a";
-    let number = Math.round(Math.random() * 1000);
-    number - 100 < 0 && (number += 100);
-    let authKey = time + "-" + number + "-" + setH5Str(channel + time + number + key).toLocaleLowerCase();
-    return authKey
 }
