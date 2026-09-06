@@ -2,6 +2,7 @@
  * FetchAxios - 基于原生fetch API的HTTP客户端
  * 提供类似axios的API接口，支持请求/响应拦截器、超时控制等功能
  */
+import {log, logError} from '../utils/log.js';
 import FormData from 'form-data';
 import https from "https";
 import diagnosticsChannel from 'diagnostics_channel';
@@ -9,6 +10,42 @@ import {resolveDoh, getSystemProxy} from '../utils/dns_doh.js';
 import {ProxyAgent, Agent} from 'undici';
 
 let undiciStripUASubscribed = false;
+
+// undici Agent 单例缓存 (L7)：
+// 历史上每个请求都 new Agent()/ProxyAgent()（各含一套连接池）且从不 close，
+// keep-alive socket 随对象被丢弃后反复建断，高流量下 FD/内存持续攀升。
+// 按"无代理 → 全局单例；有代理 → 按代理地址缓存（带上限）"复用实例。
+let defaultDispatcher = null;
+const proxyDispatchers = new Map();
+const PROXY_DISPATCHER_MAX = 8;
+
+function getFetchDispatcher(proxy) {
+    if (proxy) {
+        let dispatcher = proxyDispatchers.get(proxy);
+        if (!dispatcher) {
+            if (proxyDispatchers.size >= PROXY_DISPATCHER_MAX) {
+                const oldestKey = proxyDispatchers.keys().next().value;
+                const oldest = proxyDispatchers.get(oldestKey);
+                proxyDispatchers.delete(oldestKey);
+                try {
+                    Promise.resolve(oldest?.close?.()).catch(() => {});
+                } catch {}
+            }
+            try {
+                dispatcher = new ProxyAgent({uri: proxy, connect: {rejectUnauthorized: false}});
+            } catch {
+                // 极端无效 URI 时退化为默认直连 agent，保持与旧行为一致的可用性
+                dispatcher = getFetchDispatcher(null);
+            }
+            proxyDispatchers.set(proxy, dispatcher);
+        }
+        return dispatcher;
+    }
+    if (!defaultDispatcher) {
+        defaultDispatcher = new Agent({connect: {rejectUnauthorized: false}});
+    }
+    return defaultDispatcher;
+}
 
 function ensureUndiciStripUASubscription() {
     if (undiciStripUASubscribed) {
@@ -49,6 +86,22 @@ function ensureUndiciStripUASubscription() {
             }
         }
     });
+}
+
+/**
+ * 从 Headers 对象提取响应头，正确处理多个 set-cookie
+ * Node.js 的 Headers.entries() 对 set-cookie 只保留最后一个值，需特殊处理
+ */
+function extractResponseHeaders(response) {
+    const headers = Object.fromEntries(response.headers.entries());
+    // getSetCookie() 返回独立的 set-cookie 数组 (Node.js 18+)
+    if (typeof response.headers.getSetCookie === 'function') {
+        const setCookies = response.headers.getSetCookie();
+        if (setCookies && setCookies.length > 0) {
+            headers['set-cookie'] = setCookies.length === 1 ? setCookies[0] : setCookies;
+        }
+    }
+    return headers;
 }
 
 /**
@@ -130,19 +183,12 @@ class FetchAxios {
         }
 
         // Proxy and DOH Handling
-        let fetchDispatcher = new Agent({connect: {rejectUnauthorized: false}});
+        let fetchDispatcher = null;
         try {
             const proxy = await getSystemProxy();
-            if (proxy) {
-                // If proxy detected, use it via Undici ProxyAgent
-                fetchDispatcher = new ProxyAgent({
-                    uri: proxy,
-                    connect: {rejectUnauthorized: false}
-                });
-                // When using proxy, we generally rely on the proxy for DNS, so we can skip DOH 
-                // unless we want to force DOH even with Proxy (which is complex).
-                // "Python requests" logic usually means: if proxy env var, use proxy.
-            } else {
+            // L7：按代理地址复用 Agent 单例，替代逐请求新建
+            fetchDispatcher = getFetchDispatcher(proxy);
+            if (!proxy) {
                 // Only use DOH if NO proxy is configured
                 // DOH / DNS over HTTPS handling
                 let fullUrl = finalConfig.url;
@@ -187,7 +233,7 @@ class FetchAxios {
             }
         } catch (e) {
             // Ignore URL parse/Proxy errors
-            // console.error('[fetchAxios] Proxy/DOH setup error:', e);
+            // logError('[fetchAxios] Proxy/DOH setup error:', e);
         }
 
         // 拼接查询参数
@@ -256,14 +302,14 @@ class FetchAxios {
                     data: emptyData,
                     status: response.status,
                     statusText: response.statusText,
-                    headers: Object.fromEntries(response.headers.entries()),
+                    headers: extractResponseHeaders(response),
                     config: finalConfig,
                     request: finalConfig.url,
                 };
 
                 // 检查 validateStatus 函数，如果没有定义或返回 false，则抛出错误
                 if (!finalConfig.validateStatus || !finalConfig.validateStatus(response.status)) {
-                    // console.log(`[fetchAxios] redirect error:`, redirectResult);
+                    // log(`[fetchAxios] redirect error:`, redirectResult);
                     // 创建符合 axios 标准的错误对象
                     const redirectError = new Error(`Request failed with status code ${response.status}`);
                     redirectError.code = 'ERR_BAD_REQUEST';
@@ -273,7 +319,7 @@ class FetchAxios {
                     redirectError.isAxiosError = true;
                     throw redirectError; // 抛出符合 axios 标准的错误
                 } else {
-                    // console.log(`[fetchAxios] redirect result:`, redirectResult);
+                    // log(`[fetchAxios] redirect result:`, redirectResult);
                     return redirectResult; // 如果 validateStatus 返回 true，则正常返回
                 }
             }
@@ -297,7 +343,7 @@ class FetchAxios {
                 data: responseData,
                 status: response.status,
                 statusText: response.statusText,
-                headers: Object.fromEntries(response.headers.entries()),
+                headers: extractResponseHeaders(response),
                 config: finalConfig,
                 request: finalConfig.url,
             };
@@ -422,3 +468,6 @@ export function createHttpsInstance() {
         httpsAgent: httpsAgent
     });
 }
+
+// 导出供内存泄露回归测试与调试使用（L7）
+export {getFetchDispatcher};
