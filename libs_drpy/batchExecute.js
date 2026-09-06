@@ -1,3 +1,4 @@
+import {log, logError} from '../utils/log.js';
 import fastq from 'fastq';
 
 /**
@@ -10,7 +11,7 @@ import fastq from 'fastq';
  */
 async function batchExecute(tasks, listener, successCount, max_task = 0) {
     const maxConcurrency = Number(max_task) || Number(process.env.MAX_TASK) || 2; // Default concurrency
-    // console.log(`batchExecute with max_task: ${maxConcurrency}`);
+    // log(`batchExecute with max_task: ${maxConcurrency}`);
 
     let completedSuccess = 0;
     let stopExecution = false;
@@ -52,13 +53,14 @@ async function batchExecute(tasks, listener, successCount, max_task = 0) {
     // Enqueue tasks with a stop check
     tasks.forEach((task) => {
         queue.push(task).catch((err) => {
-            console.error(`Task queue error for task ${task.id}:`, err);
+            logError(`Task queue error for task ${task.id}:`, err);
         });
     });
 
     // Monitor the queue and clear it on stopExecution
+    let interval;
     const stopMonitor = new Promise((resolve) => {
-        const interval = setInterval(() => {
+        interval = setInterval(() => {
             if (stopExecution) {
                 queue.kill(); // Clear all pending tasks
                 clearInterval(interval);
@@ -68,9 +70,15 @@ async function batchExecute(tasks, listener, successCount, max_task = 0) {
     });
 
     // Wait for either stopExecution or all tasks to finish
-    await Promise.race([queue.drained(), stopMonitor]);
+    try {
+        await Promise.race([queue.drained(), stopMonitor]);
+    } finally {
+        // 无论正常跑完(drained 先结束)还是中途异常，都必须停掉监控定时器，
+        // 否则每调用一次就泄漏一个 50ms 常驻 interval 并钉住 queue 闭包 (L1)
+        clearInterval(interval);
+    }
 
-    console.log(`batchExecute completed with max_task: ${maxConcurrency} and ${completedSuccess} successful tasks.`);
+    log(`batchExecute completed with max_task: ${maxConcurrency} and ${completedSuccess} successful tasks.`);
     return successfulResults;
 }
 
