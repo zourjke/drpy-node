@@ -1,3 +1,4 @@
+import {log, logError, logWarn} from './log.js';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { prepareBinary } from './binHelper.js';
@@ -13,7 +14,7 @@ export const checkPhpAvailable = async () => {
     // Check existence and permissions
     const validPath = prepareBinary(phpPath);
     if (!validPath) {
-        console.warn(`⚠️ PHP binary not found or invalid: ${phpPath}`);
+        logWarn(`⚠️ PHP binary not found or invalid: ${phpPath}`);
         isPhpAvailable = false;
         phpVersion = '';
         return false;
@@ -21,18 +22,18 @@ export const checkPhpAvailable = async () => {
     phpPath = validPath;
 
     try {
-        console.log(`[phpEnv] Verifying PHP executable: ${phpPath}`);
+        log(`[phpEnv] Verifying PHP executable: ${phpPath}`);
         const { stdout } = await execFileAsync(phpPath, ['-v']);
         const match = stdout.match(/PHP\s+([0-9.]+)/i);
         phpVersion = match ? match[1] : 'ON';
         isPhpAvailable = true;
-        console.log(`✅ PHP environment check passed (${phpPath}, v${phpVersion}).`);
+        log(`✅ PHP environment check passed (${phpPath}, v${phpVersion}).`);
     } catch (e) {
         isPhpAvailable = false;
         phpVersion = '';
-        console.warn(`⚠️ PHP environment check failed. PHP features will be disabled.`);
-        console.warn(`[phpEnv] Error details:`, e.message);
-        // console.error(e);
+        logWarn(`⚠️ PHP environment check failed. PHP features will be disabled.`);
+        logWarn(`[phpEnv] Error details:`, e.message);
+        // logError(e);
     }
     return isPhpAvailable;
 };
