@@ -33,6 +33,8 @@
 | CLIPBOARD_MAX_READ_SIZE   | 最大可读取问文本体积，默认2mb               | 2048000                                                           |
 | API_TIMEOUT               | 默认API超时时间                      | 20                                                                |
 | API_ACTION_TIMEOUT        | action接口专用超时时间                 | 60                                                                |
+| BRIDGE_TIMEOUT             | python桥接单次请求超时毫秒(Node侧bridge与守护进程共用)   | 30000                                                             |
+| BRIDGE_PACKET_MAX          | python桥接单包上限字节(Node侧默认10MB,守护进程旗舰版60MB/轻量版10MB) | 10485760                                                    |
 | MAX_TEXT_SIZE             | 设置最大文本大小(剪切板插件)                | 0.1 * 1024 * 1024                                                 |
 | MAX_IMAGE_SIZE            | 设置最大图片大小(图片插件)                 | 0.5 * 1024 * 1024                                                 |
 
@@ -45,6 +47,7 @@
 | enable_php | 是否开启 PHP 源支持 | 0:关闭 1:开启(本地执行T4,需环境) 2:开启(远程加载T3,免环境) |
 | api_pwd | 全局接口访问密码 | 访问敏感接口或文件时需要 |
 | thread | 爬虫并发数 | 建议设置在 4-8 之间 |
+| unified_proxy_self_redirect | 全能代理对「自身链接」的处理模式 | 0:回环转发（默认，兼容不跟随 302 的壳子） 1:302 重定向（零转发开销，单层代理链） |
 | quark_cookie | 夸克网盘 Cookie | 观看夸克网盘资源需要 |
 | uc_cookie | UC 网盘 Cookie | 观看 UC 网盘资源需要 |
 | ali_token | 阿里云盘 Token | 观看阿里云盘资源需要 |

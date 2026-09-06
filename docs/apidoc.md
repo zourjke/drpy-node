@@ -192,3 +192,24 @@
 3. `ext` 参数必须是 **Base64 编码的 JSON 字符串**，否则会报“筛选参数错误”。
 4. 流媒体内容可能会通过 `/mediaProxy` 重定向处理。
 5. 建议在请求时加上 `pg` 参数避免默认第一页。
+
+---
+
+## 5. 验证码识别代理（captcha-bypass 插件）
+
+drpys 内置对插件市场 `captcha-bypass`（ddddocr 验证码识别服务）的透明代理。**按插件名判定可用性**（不探测端口）：插件已安装且运行正常时代理可用，否则返回 503 及原因；转发目标端口从插件 `env.PORT` 动态读取（缺省 7788）。
+
+源只需请求 drpys 主服务的**相同端口与路径**，无需感知插件端口：
+
+| 接口 | 请求方式 | 说明 |
+|----|----|----|
+| `/captcha/ocr` | POST | OCR 文字/算术识别，body：`{"type":"text\|math","bg":"<base64 dataURL / 图片URL>"}` |
+| `/captcha/detect` | POST | 目标检测（滑块缺口），`{"type":"detect\|match","bg":"…"[,"thumb":"…"]}` |
+| `/captcha/rotate` | POST | 旋转验证码，`{"type":"single\|nox\|tiktok","bg":"…"[,"thumb":"…"]}` |
+| `/captcha/slide` | POST | 滑块验证码，`{"type":"match\|comparison","thumb":"…","bg":"…"}` |
+| `/captcha/health` | GET | 透传插件健康检查 |
+| `/captcha/status` | GET | drpys 本地探测：`{ok, installed, running, port}`，失败时附 `message` |
+
+- 图片支持 Base64（dataURL）、图片 URL、multipart/form-data 文件三种形式。
+- 响应为插件原样 JSON：`{"code":0,"data":{"code":"识别结果"},"msg":"success"}`。
+- 插件未安装/未运行时：`503 {"code":-1,"msg":"插件 captcha-bypass 未运行，请到后台管理-插件管理启动"}`。

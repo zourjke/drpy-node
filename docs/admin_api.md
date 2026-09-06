@@ -157,14 +157,15 @@
 ### 4.1 获取源列表
 - **路径:** `/sources`
 - **方法:** `GET`
-- **描述:** 获取不同语言/引擎 (`js`, `catvod`, `php`, `py`) 目录下的爬虫源文件列表。
+- **描述:** 获取不同语言/引擎 (`js`, `dr2`, `catvod`, `php`, `py`) 目录下的爬虫源文件列表。
 - **返回值示例:**
   ```json
   {
       "js": ["siteA.js"],
+      "dr2": ["siteD.js"],
       "catvod": ["siteB.js"],
       "php": ["siteC.php"],
-      "py": ["siteD.py"]
+      "py": ["siteE.py"]
   }
   ```
 
@@ -212,6 +213,31 @@
 - **方法:** `GET`
 - **描述:** 获取系统内置爬虫全局方法和解析规则的说明信息（用于开发帮助）。
 - **返回值示例:** 包含 `globalObjects` 和 `parsingRules` 字符串数组的 JSON。
+
+### 4.6 上传源文件
+- **路径:** `/sources/upload`
+- **方法:** `POST`
+- **描述:** 上传源文件到引擎目录（bodyLimit 5MB）。引擎白名单 `js`/`dr2`/`catvod`/`php`/`py`，文件名仅允许 basename 且扩展名需匹配引擎；同名已存在且未带 `overwrite` 返回 409。落盘后自动语法校验（fail-soft：失败仍保留文件，`check.ok=false` 带原因）。
+- **参数 (Body):**
+  - `engine` (必填, 字符串): 源类型 `js` / `dr2` / `catvod` / `php` / `py`。
+  - `filename` (必填, 字符串): 源文件名（仅 basename）。
+  - `content` (必填, 字符串): 源文件全文。
+  - `overwrite` (可选, 布尔): 同名源已存在时是否覆盖，默认 `false`。
+- **返回值示例:**
+  ```json
+  { "success": true, "data": { "path": "spider/js/示例.js", "engine": "js", "check": { "ok": true, "message": "语法检查通过" } } }
+  ```
+
+### 4.7 删除源文件
+- **路径:** `/sources/delete`
+- **方法:** `POST`
+- **描述:** 删除单个源文件。仅允许删除源目录（`spider/js`、`js_dr2`、`catvod`、`php`、`py`）内的单个源文件，路径越界/目录/子路径返回 403，不存在返回 404。
+- **参数 (Body):**
+  - `path` (必填, 字符串): 源文件相对路径，如 `spider/js/示例.js`。
+- **返回值示例:**
+  ```json
+  { "success": true, "data": { "path": "spider/js/示例.js", "engine": "js" } }
+  ```
 
 ---
 
@@ -494,6 +520,124 @@
       "message": "已恢复默认插件配置"
   }
   ```
+
+### 9.4 获取插件运行状态
+- **路径:** `/plugins/status`
+- **方法:** `GET`
+- **描述:** 获取所有插件的运行时状态（存活进程的 pid 与启动时间）。
+- **返回值示例:**
+  ```json
+  {
+      "success": true,
+      "data": {
+          "lxserver": { "key": "lxserver#5", "pid": 34056, "running": true, "startedAt": 1787973552913 }
+      }
+  }
+  ```
+
+### 9.5 启动 / 停止 / 重启单个插件
+- **路径:** `/plugins/start`、`/plugins/stop`、`/plugins/restart`
+- **方法:** `POST`
+- **描述:** 运行时控制单个插件，无需重启主服务。start/restart 对 Node 型插件会先自动准备依赖（npm install 与 native binding 补装，首次可能耗时数分钟）。
+- **参数 (Body):**
+  - `name` (必填, 字符串): 插件名。
+- **返回值示例:**
+  ```json
+  { "success": true, "data": { "ok": true, "key": "lxserver#5", "pid": 5012 } }
+  ```
+
+### 9.6 上传插件 zip 包安装（异步任务）
+- **路径:** `/plugins/upload`
+- **方法:** `POST` (`multipart/form-data`)
+- **描述:** 上传本地 zip 安装包安装插件：流式落盘临时目录（≤500MB，不驻留内存）→ 预读包内 `plugin.json` 推导 name/version/runtime（无 manifest 的上游原始包自动剥壳、按 zip 文件名登记，包内含 `index.js`/`package.json` 判定为 Node 型）→ 走完整安装管线（ZipSlip 防护/sha256 校验/剥壳/manifest 落盘/完整性校验/登记/回滚）。同名旧插件运行中会先停止（Windows 下运行中目录无法覆盖），安装后按 `start` 参数重启。与市场安装共用单任务互斥（并发 409）与 `/market/install/status` 进度轮询，任务 `type` 为 `upload`。
+- **参数 (Form):**
+  - `file` (必填): zip 安装包。
+  - `active` (可选, "true"): 登记为随服务启动，默认 `false`。
+  - `start` (可选, "true"): 安装完成后立即启动，默认 `false`。
+  - `sha256` (可选, 字符串): 包内容 sha256，服务端校验传输完整性。
+- **返回值示例:**
+  ```json
+  { "success": true, "data": { "taskId": "upload-1788027191392" } }
+  ```
+
+---
+
+## 9-A. 插件市场 API
+
+### 9A.1 获取市场列表
+- **路径:** `/market/list`
+- **方法:** `GET`
+- **描述:** 聚合所有市场源并与本地安装状态合并。支持 `?refresh=1` 强制刷新源缓存（默认缓存 60 秒）。
+- **返回值示例:**
+  ```json
+  {
+      "success": true,
+      "data": {
+          "plugins": [{
+              "name": "lxserver", "version": "2.0.0", "title": "...", "desc": "...",
+              "runtime": "node", "status": "installed", "installedVersion": "2.0.0",
+              "running": true, "pid": 34056, "platformSupported": true
+          }],
+          "localOnly": [{ "name": "req-proxy", "status": "local_only" }],
+          "errors": [],
+          "currentPlatform": "win32",
+          "ghProxy": "https://github.catvod.com/"
+      }
+  }
+  ```
+- **status 取值:** `not_installed` / `installed` / `update_available` / `local_only`（本地已存在同名未托管目录）
+
+### 9A.2 市场源管理
+- **路径:** `/market/sources`
+- **方法:** `GET` / `POST`
+- **描述:** 读写 `config/market.json`。源支持 HTTP(S) URL 或项目内 JSON 文件路径（如内置的 `config/market-plugins.json`）。
+- **参数 (POST Body):**
+  - `sources` (必填, 字符串数组): 市场源列表。
+  - `ghProxy` (可选, 字符串): GitHub 下载加速前缀。
+
+### 9A.3 安装插件（异步任务）
+- **路径:** `/market/install`
+- **方法:** `POST`
+- **描述:** 下载市场插件包并安装。支持两类包：市场规范包（根级含 `plugin.json`）与上游原始包（无 manifest、顶层带目录壳，安装时自动剥壳并用清单条目生成 `plugin.json` 落盘）。GitHub 下载失败自动走 `ghProxy` 加速兜底。**异步任务化**：立即返回 `taskId`，安装转后台执行，进度轮询 `/market/install/status`（见 9A.4）。同一时间仅允许一个任务（并发返回 409）。
+- **参数 (Body):**
+  - `name` (必填, 字符串): 插件名。
+  - `version` (可选, 字符串): 缺省安装最新版。
+  - `active` (可选, 布尔): 登记为随服务启动，默认 `false`。
+  - `start` (可选, 布尔): 安装完成后立即启动，默认 `false`。
+- **返回值示例:**
+  ```json
+  { "success": true, "data": { "taskId": "install-1787988186083" } }
+  ```
+
+### 9A.4 安装任务进度
+- **路径:** `/market/install/status`
+- **方法:** `GET`
+- **描述:** 查询当前/最近一次安装或更新任务的实时进度（单任务模型）。阶段流转：`download`(0-70，含字节级进度) → `verify`(72) → `extract`(76-84) → `register`(86-90) → `deps`(88-96，npm 输出实时尾行在 `output`) → `start`(97-100) → `done`。
+- **返回值示例:**
+  ```json
+  {
+      "success": true,
+      "data": {
+          "id": "install-1787988186083", "type": "install", "name": "lxserver", "version": "2.0.0",
+          "status": "running", "stage": "download", "percent": 42,
+          "message": "下载中 9.7 MB / 23.1 MB", "output": "",
+          "startedAt": 1787988186083, "finishedAt": null, "error": null, "result": null
+      }
+  }
+  ```
+- **status 取值:** `running` / `done` / `error`（终态保留，下次发起安装时覆盖）
+
+### 9A.5 更新插件（异步任务）
+- **路径:** `/market/update`
+- **方法:** `POST`
+- **描述:** 更新已安装插件到市场最新版：运行中先停止 → 覆盖安装（保留用户已改的 params/env/active）→ 原来在运行则自动重启。任务化与进度同 9A.3/9A.4（`type` 为 `update`）。
+- **参数 (Body):** `name` (必填)。
+
+### 9A.6 卸载插件
+- **路径:** `/market/uninstall`
+- **方法:** `POST`
+- **描述:** 运行中先停止，删除 `plugins/<name>/` 目录并从 `.plugins.js` 移除配置。不可恢复。
+- **参数 (Body):** `name` (必填)。
 
 ---
 

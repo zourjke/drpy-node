@@ -308,3 +308,65 @@ GET /api/vod1?filter=1
 3. 参数`extend`（接口数据扩展）从sites的ext直接取字符串，若有就每个接口都加上。
    开发人员可参考此文档进行对接。
 4. 除`action`外的接口，尽量都用`get`协议,action由于传值可能较大推荐使用`post`
+## 8. 代理接口与 toBytes 协议（/proxy/:module/*）
+
+`/proxy/:module/*?do=ds|cat|py|php` 路由调用各引擎源的本地代理方法（ds/cat 为 `proxy_rule`，py/php 为 `localProxy`），统一返回五元组：
+
+```
+[code, mediaType, content, headers, toBytes]
+```
+
+| toBytes | content 语义 | 服务端行为 | 适用场景 |
+|---------|-------------|-----------|---------|
+| 缺省/0 | 文本或 Buffer | 全量返回（仅小体积内容） | m3u8 文本改写、接口 JSON、图片 |
+| 1 | base64（可带 `base64,` 前缀） | 解码为 Buffer 后返回 | 二进制小对象 |
+| 2 | http(s) URL | 302 重定向到 `/mediaProxy` 流式代理（headers 编码进 query，由服务端携带拉流） | **大文件/长视频主力通道**：直链 mp4、TS 分片 |
+| 3 | http(s) URL | 服务端内联流式 pipe（同 `/mediaProxy?stream=1` 实现，Range/206/60s 空闲断开语义一致） | 客户端不跟随 302、或需隐藏 mediaProxy 地址 |
+
+### 框架注入的保留参数（`__` 前缀）
+
+`/proxy` 路由在调用源方法前，会向 params 注入两个框架保留字段：
+
+| 字段 | 含义 |
+|------|------|
+| `__range` | 客户端原始 Range 请求头（如 `bytes=0-1023`），源据此回 206 分段 |
+| `__mediaProxy` | 服务端 mediaProxy 基址（如 `http://host:5757/mediaProxy`），源用它拼 toBytes=2/3 的流式出口 |
+
+### 长视频（数 GB / 1 小时+）三类场景指引
+
+| 场景 | 做法 |
+|------|------|
+| C1 直链大文件 | 源只算 URL+headers，返回 toBytes=2（或 3）；数据面由 mediaProxy 原生 pipe，内存 O(1) |
+| C2 m3u8 改写 | manifest（KB 级文本）在源内改写；分片出口用 `__mediaProxy` 包装，避免播放器直连丢自定义头 |
+| C3 加密流/逐块签名 | 需要源逐块变换数据的场景暂不支持流式（受 bridge 单包上限约束），后续版本提供 daemon relay |
+
+### hipy(py) 源写法示例
+
+```python
+def localProxy(self, params):
+    base = params.get('__mediaProxy', '')
+    # C1 直链：302 到 mediaProxy（服务端带 header 拉流，规避 302 丢自定义头）
+    return [302, "text/html", self.proxy_media_url(self.d64(params['url']), self.play_headers, base), {}, 2]
+    # C1 变体（客户端不跟随 302 时）：内联流式
+    # return [200, "video/mp4", self.proxy_media_url(url, headers, base), {}, 3]
+    # C2 m3u8 改写：manifest 在源内改，分片走 mediaProxy
+    # return [200, "application/vnd.apple.mpegurl",
+    #         self.rewrite_m3u8_to_proxy(text, m3u8_url, self.play_headers, base)]
+```
+
+`base.spider.BaseSpider` 基类已内置 `proxy_media_url(url, headers=None, base='')` 与 `rewrite_m3u8_to_proxy(m3u8_text, m3u8_url, headers=None, base='')` 辅助方法；`base` 未注入时原样返回 url，优雅降级为直连。
+
+### php 源写法示例
+
+```php
+public function localProxy($params) {
+    $base = $params['__mediaProxy'] ?? '';
+    $url = base64_decode($params['url']);
+    return [302, 'text/html', $this->proxyMediaUrl($url, ['User-Agent' => 'xxx'], $base), [], 2];
+}
+```
+
+### 反模式提示
+
+- `[302, 'text/html', None, {'Location': 上游直链}]` 直跳上游的写法会导致播放器跟随跳转时**丢失自定义 UA/Referer/Cookie**，防盗链站点直接 403——请改用 toBytes=2 由 mediaProxy 携带 header 拉流；
+- 通过 localProxy 全量回传大体积媒体内容（toBytes 缺省）受 bridge 单包上限（默认 10MB，`BRIDGE_PACKET_MAX` 可覆写）与超时（`BRIDGE_TIMEOUT`，默认 30s；Node 侧 `API_TIMEOUT` 默认 20s）约束，**不要用于媒体数据面**。
