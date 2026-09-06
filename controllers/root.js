@@ -1,7 +1,7 @@
+import {log} from '../utils/log.js';
 import path from 'path';
 import {readdirSync, readFileSync, writeFileSync, existsSync, createReadStream} from 'fs';
 import '../utils/marked.min.js';
-// import { marked } from "marked";
 import {computeHash} from '../utils/utils.js';
 import {validateBasicAuth} from "../utils/api_validate.js";
 import {daemon} from "../utils/daemonManager.js";
@@ -12,9 +12,9 @@ export default (fastify, options, done) => {
     fastify.get('/', {preHandler: validateBasicAuth}, async (request, reply) => {
         let readmePath = null;
         const indexHtmlPath = path.join(options.rootDir, 'public/index.html');
-        // console.log(`indexHtmlPath:${indexHtmlPath}`);
+        // log(`indexHtmlPath:${indexHtmlPath}`);
         const files = readdirSync(options.rootDir);
-        // console.log(files);
+        // log(files);
         for (const file of files) {
             if (/^readme\.md$/i.test(file)) {
                 readmePath = path.join(options.rootDir, file);
@@ -51,13 +51,13 @@ export default (fastify, options, done) => {
             `;
         const indexHtmlHash = computeHash(indexHtml);
         if (!existsSync(indexHtmlPath)) {
-            console.log(`将readme.md 本地文件:${indexHtmlPath}`);
+            log(`将readme.md 本地文件:${indexHtmlPath}`);
             writeFileSync(indexHtmlPath, indexHtml, 'utf8');
         } else {
             const tmpIndexHtml = readFileSync(indexHtmlPath, 'utf-8');
             const tmpIndexHtmlHash = computeHash(tmpIndexHtml);
             if (indexHtmlHash !== tmpIndexHtmlHash) {
-                console.log(`readme.md发生了改变，更新本地文件:${indexHtmlPath}`);
+                log(`readme.md发生了改变，更新本地文件:${indexHtmlPath}`);
                 writeFileSync(indexHtmlPath, indexHtml, 'utf8');
             }
         }
@@ -118,7 +118,13 @@ export default (fastify, options, done) => {
     });
 
     // 健康检查端点
-    fastify.get('/health', async (request, reply) => {
+    fastify.get('/health', {
+        schema: {
+            tags: ['协议接口'],
+            summary: 'Python 守护进程健康检查',
+            security: [],
+        },
+    }, async (request, reply) => {
         return {
             status: 'ok',
             timestamp: toBeijingTime(new Date()),
