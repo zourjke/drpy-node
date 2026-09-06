@@ -1,3 +1,4 @@
+import {log, logError} from '../log.js';
 import WebSocket from 'ws';
 import crypto from 'crypto';
 
@@ -52,7 +53,7 @@ class SparkAIBot {
         });
 
         ws.on('open', () => {
-            // console.log('WebSocket connection established');
+            // log('WebSocket connection established');
         });
 
         return ws;
@@ -107,14 +108,16 @@ class SparkAIBot {
 
             // 在WebSocket关闭时返回完整的响应
             ws.on('close', () => {
-                // console.log('WebSocket connection closed');
+                // log('WebSocket connection closed');
                 this.updateUserContext(userId, {role: 'assistant', content: fullResponse});
                 resolve(fullResponse);  // 返回完整的响应文本
             });
 
             // 处理错误
             ws.on('error', (error) => {
-                console.error('WebSocket error:', error);
+                logError('WebSocket error:', error);
+                // 远端异常挂起时强杀连接，避免每次 ask 泄漏一条 WS 连接 (L23)
+                try { ws.terminate(); } catch {}
                 reject(error);  // 出现错误时，Promise 被拒绝
             });
         });
@@ -130,9 +133,9 @@ const assistant = new SparkAIBot('6fafca91', '道长', 'tke24zrzq3f1_v1', 'your_
 async function getWeather() {
     try {
         const response = await assistant.ask('user1', '你知道zyplayer吗？');
-        console.log('AI Response:', response);  // 获取到的完整文本
+        log('AI Response:', response);  // 获取到的完整文本
     } catch (error) {
-        console.error('Error getting response:', error);
+        logError('Error getting response:', error);
     }
 }
 
