@@ -1,6 +1,6 @@
 {
   "name": "drpy-node",
-  "version": "1.4.6",
+  "version": "2.0.4",
   "main": "index.js",
   "type": "module",
   "scripts": {
@@ -12,14 +12,14 @@
     "pm2": "pm2 start index.js --name drpys",
     "node22": "node --experimental-sqlite index.js",
     "node22-win": "chcp 65001 && node --trace-deprecation --experimental-sqlite index.js",
-    "package": "python package.py",
-    "package-green": "python package.py -g",
-    "package-zip": "python package.py -z",
-    "package-green-zip": "python package.py -g -z",
-    "packageJS": "node package.js",
-    "packageJS-green": "node package.js -g",
-    "packageJS-zip": "node package.js -z",
-    "packageJS-green-zip": "node package.js -g -z",
+    "package": "node package-clean.mjs",
+    "package-green": "node package-clean.mjs -g",
+    "package-zip": "node package-clean.mjs -z",
+    "package-green-zip": "node package-clean.mjs -g -z",
+    "packageJS": "node package-clean.mjs",
+    "packageJS-green": "node package-clean.mjs -g",
+    "packageJS-zip": "node package-clean.mjs -z",
+    "packageJS-green-zip": "node package-clean.mjs -g -z",
     "package-bundle": "node package-bundle.js",
     "gzip-1": "node controllers/encoder.js json/十六万歌曲.json",
     "ungzip-1": "node controllers/decoder.js json/十六万歌曲.json.gz",
@@ -29,7 +29,9 @@
     "test-bun:bundle": "cd drpy-node-bundle && bun localDsCoreTest.js",
     "admin:dev": "cd drpy-node-admin && npm run dev",
     "admin:build": "cd drpy-node-admin && npm run build:apps",
-    "admin:install": "cd drpy-node-admin && npm install"
+    "admin:install": "cd drpy-node-admin && npm install",
+    "test": "node --test \"tests/**/*.test.js\"",
+    "check": "node scripts/check-syntax.js"
   },
   "engines": {
     "node": ">17 <24"
@@ -40,8 +42,12 @@
   "license": "MIT",
   "dependencies": {
     "@fastify/formbody": "^7.4.0",
+    "@fastify/multipart": "^8",
     "@fastify/static": "7.0.4",
+    "@fastify/swagger": "^8.15.0",
+    "@fastify/swagger-ui": "^4",
     "@fastify/websocket": "^10.0.1",
+    "adm-zip": "^0.6.0",
     "axios": "^1.7.9",
     "basic-ftp": "^5.0.5",
     "cheerio": "^1.0.0-rc.12",
@@ -66,13 +72,12 @@
     "node-forge": "^1.3.1",
     "node-sqlite3-wasm": "^0.8.35",
     "nodemailer": "^7.0.5",
-    "p-queue": "^8.0.1",
     "pickleparser": "^0.2.1",
     "pino": "^9.7.0",
     "pinyin": "^4.0.0",
+    "puppeteer": "25.0.4",
     "python-shell": "^5.0.0",
     "qs": "^6.13.1",
-    "queue": "^7.0.0",
     "rotating-file-stream": "^3.2.6",
     "simplecc-wasm": "^1.1.0",
     "sync-fetch": "^0.6.0-2",
@@ -88,5 +93,6 @@
   },
   "optionalDependencies": {
     "node-pty": "^1.1.0"
-  }
+  },
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }
