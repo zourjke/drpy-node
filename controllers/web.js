@@ -1,3 +1,4 @@
+import {log, logError} from '../utils/log.js';
 import {readFileSync, existsSync, readdirSync, statSync, unlinkSync, mkdirSync, copyFileSync, lstatSync, writeFileSync} from 'fs';
 import {createReadStream} from 'fs';
 import {execSync} from 'child_process';
@@ -44,10 +45,10 @@ const findLatestPackage = (projectDir, packageName) => {
         const isGreen = packageName.includes('-green');
         const ext = packageName.split('.').pop();
         const baseName = packageName.replace(/-green\.[^.]+$/, '').replace(/\.[^.]+$/, '');
-        const pattern = new RegExp(`^${baseName.replace(/\./g, '\\.')}-\\d{8}${isGreen ? '-green' : ''}\\.${ext}`);
+        const pattern = new RegExp(`^(?:${baseName.replace(/\./g, '\\.')}|drpy-node)-\\d{8}${isGreen ? '-green' : ''}\\.${ext}`);
 
-        console.log(`查找包: ${packageName}, 正则: ${pattern.source}, 父目录: ${parentDir}`);
-        console.log('目录中的文件:', files.filter(f => f.includes('drpy-node')));
+        log(`查找包: ${packageName}, 正则: ${pattern.source}, 父目录: ${parentDir}`);
+        log('目录中的文件:', files.filter(f => f.includes('drpy-node')));
 
         const packageFiles = files
             .filter(file => pattern.test(file))
@@ -58,10 +59,10 @@ const findLatestPackage = (projectDir, packageName) => {
             })
             .sort((a, b) => b.mtime - a.mtime);
 
-        console.log('匹配到的文件:', packageFiles.map(f => f.file));
+        log('匹配到的文件:', packageFiles.map(f => f.file));
         return packageFiles.length > 0 ? packageFiles[0] : null;
     } catch (error) {
-        console.error('查找包失败:', error.message);
+        logError('查找包失败:', error.message);
         return null;
     }
 };
@@ -76,15 +77,15 @@ const buildPackage = (packageName) => {
             command += ' -z';
         }
 
-        console.log(`执行打包命令: ${command}, 目录: ${projectRootDir}`);
+        log(`执行打包命令: ${command}, 目录: ${projectRootDir}`);
         const output = execSync(command, {cwd: projectRootDir, stdio: 'pipe'});
-        console.log('打包输出:', output.toString());
+        log('打包输出:', output.toString());
         const result = findLatestPackage(projectRootDir, packageName);
-        console.log('打包后查找结果:', result ? result.file : '未找到');
+        log('打包后查找结果:', result ? result.file : '未找到');
         return result;
     } catch (error) {
-        console.error('打包失败:', error.message);
-        console.error('错误详情:', error.stdout?.toString(), error.stderr?.toString());
+        logError('打包失败:', error.message);
+        logError('错误详情:', error.stdout?.toString(), error.stderr?.toString());
         throw error;
     }
 };
@@ -133,12 +134,12 @@ export default (fastify, options, done) => {
             let cookie_str = value;
 
             if (['quark_cookie', 'uc_cookie'].includes(key)) {
-                // console.log(cookie_obj);
+                // log(cookie_obj);
                 cookie_str = COOKIE.stringify({
                     __pus: cookie_obj.__pus || '',
                     __puus: cookie_obj.__puus || '',
                 });
-                console.log(cookie_str);
+                log(cookie_str);
             }
             // 调用 ENV.set 设置环境变量
             ENV.set(key, cookie_str);
@@ -151,7 +152,7 @@ export default (fastify, options, done) => {
             });
         } catch (error) {
             // 捕获异常并返回错误响应
-            console.error('Error setting cookie:', error.message);
+            logError('Error setting cookie:', error.message);
             return reply.code(500).send({
                 success: false,
                 message: 'Internal server error',
@@ -227,7 +228,7 @@ export default (fastify, options, done) => {
 
             reply.type('text/html').send(html);
         } catch (error) {
-            console.error('获取下载页面失败:', error.message);
+            logError('获取下载页面失败:', error.message);
             return reply.code(500).send({
                 success: false,
                 message: '获取下载页面失败',
@@ -287,7 +288,7 @@ export default (fastify, options, done) => {
             let latestPackage = findLatestPackage(projectRootDir, filename);
 
             if (!latestPackage) {
-                console.log(`未找到 ${filename}，开始打包...`);
+                log(`未找到 ${filename}，开始打包...`);
                 latestPackage = buildPackage(filename);
                 if (!latestPackage) {
                     return reply.code(500).send({
@@ -303,7 +304,7 @@ export default (fastify, options, done) => {
             reply.header('Content-Disposition', `attachment; filename="${encodeURIComponent(latestPackage.file)}"`);
             return reply.send(fileStream);
         } catch (error) {
-            console.error('下载文件失败:', error.message);
+            logError('下载文件失败:', error.message);
             return reply.code(500).send({
                 success: false,
                 message: '下载失败',
@@ -339,7 +340,7 @@ export default (fastify, options, done) => {
                         deletedFiles.push(file);
                         deletedCount++;
                     } catch (error) {
-                        console.error(`删除文件失败: ${file}`, error.message);
+                        logError(`删除文件失败: ${file}`, error.message);
                     }
                 }
             }
@@ -351,7 +352,7 @@ export default (fastify, options, done) => {
                 message: `已清除 ${deletedCount} 个历史文件`
             });
         } catch (error) {
-            console.error('清除历史文件失败:', error.message);
+            logError('清除历史文件失败:', error.message);
             return reply.code(500).send({
                 success: false,
                 message: '清除历史文件失败',
