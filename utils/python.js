@@ -1,3 +1,4 @@
+import {log} from './log.js';
 export function extractNameFromCode(code) {
     // 正则表达式解释：
     // def getName\(self\):   -- 匹配方法定义
@@ -19,4 +20,4 @@ export function extractNameFromCode(code) {
 //     filterate = False
 // `;
 //
-// console.log(extractNameFromCode(code)); // 输出："新浪资源"
+// log(extractNameFromCode(code)); // 输出："新浪资源"
