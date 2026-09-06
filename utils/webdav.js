@@ -15,6 +15,7 @@
  * @version 1.0.0
  */
 
+import {log, logError, logWarn} from './log.js';
 import axios from 'axios';
 import https from 'https';
 import http from 'http';
@@ -94,7 +95,7 @@ export class WebDAVClient {
             });
             return true;
         } catch (error) {
-            console.error('WebDAV connection test failed:', error.message);
+            logError('WebDAV connection test failed:', error.message);
             return false;
         }
     }
@@ -151,7 +152,7 @@ export class WebDAVClient {
 
             // 添加调试信息
             if (Number(process.env.WEBDAV_DEBUG)) {
-                console.log('WebDAV PROPFIND response for', remotePath, ':', response.data);
+                log('WebDAV PROPFIND response for', remotePath, ':', response.data);
             }
 
             const items = this._parseMultiStatus(response.data);
@@ -432,10 +433,10 @@ export class WebDAVClient {
 
             // 添加调试信息
             if (Number(process.env.WEBDAV_DEBUG)) {
-                console.log('WebDAV COPY operation:');
-                console.log('  Source:', normalizedSource);
-                console.log('  Destination URL:', destinationUrl);
-                console.log('  Headers:', headers);
+                log('WebDAV COPY operation:');
+                log('  Source:', normalizedSource);
+                log('  Destination URL:', destinationUrl);
+                log('  Headers:', headers);
             }
 
             const response = await this.client.request({
@@ -552,14 +553,14 @@ export class WebDAVClient {
         try {
             basePath = decodeURIComponent(basePath);
         } catch (e) {
-            console.warn('Failed to decode basePath:', basePath);
+            logWarn('Failed to decode basePath:', basePath);
         }
 
         // 添加调试信息
         if (Number(process.env.WEBDAV_DEBUG)) {
-            console.log('_normalizeResponsePath debug:');
-            console.log('  Response path:', responsePath);
-            console.log('  Base path:', basePath);
+            log('_normalizeResponsePath debug:');
+            log('  Response path:', responsePath);
+            log('  Base path:', basePath);
         }
 
         // 如果响应路径以基础路径开头，移除它
@@ -577,7 +578,7 @@ export class WebDAVClient {
             }
 
             if (Number(process.env.WEBDAV_DEBUG)) {
-                console.log('  Normalized path:', normalizedPath);
+                log('  Normalized path:', normalizedPath);
             }
 
             return normalizedPath;
@@ -585,7 +586,7 @@ export class WebDAVClient {
 
         // 如果不以基础路径开头，直接返回原路径
         if (Number(process.env.WEBDAV_DEBUG)) {
-            console.log('  No normalization needed, returning:', responsePath);
+            log('  No normalization needed, returning:', responsePath);
         }
 
         return responsePath;
@@ -611,12 +612,12 @@ export class WebDAVClient {
 
         // 添加调试信息
         if (Number(process.env.WEBDAV_DEBUG)) {
-            console.log('_getAbsoluteUrl debug:');
-            console.log('  Input remotePath:', remotePath);
-            console.log('  Normalized path:', normalizedPath);
-            console.log('  Base URL:', baseURL);
-            console.log('  Clean path:', cleanPath);
-            console.log('  Final absolute URL:', absoluteUrl);
+            log('_getAbsoluteUrl debug:');
+            log('  Input remotePath:', remotePath);
+            log('  Normalized path:', normalizedPath);
+            log('  Base URL:', baseURL);
+            log('  Clean path:', cleanPath);
+            log('  Final absolute URL:', absoluteUrl);
         }
 
         return absoluteUrl;
@@ -667,7 +668,7 @@ export class WebDAVClient {
             const responseElements = $('response, d\\:response, D\\:response').toArray();
 
             if (responseElements.length === 0) {
-                console.warn('No response elements found in WebDAV XML');
+                logWarn('No response elements found in WebDAV XML');
                 return this._parseMultiStatusFallback(xmlData);
             }
 
@@ -677,7 +678,7 @@ export class WebDAVClient {
                 // 提取 href（支持不同的命名空间）
                 let href = $response.find('href, d\\:href, D\\:href').first().text().trim();
                 if (!href) {
-                    console.warn('No href found in response element');
+                    logWarn('No href found in response element');
                     return;
                 }
 
@@ -685,7 +686,7 @@ export class WebDAVClient {
                 try {
                     href = decodeURIComponent(href);
                 } catch (e) {
-                    console.warn('Failed to decode href:', href);
+                    logWarn('Failed to decode href:', href);
                 }
 
                 // 规范化路径 - 移除 WebDAV 基础路径前缀
@@ -728,20 +729,20 @@ export class WebDAVClient {
                 // 查找 propstat 元素（支持不同的命名空间）
                 const $propstat = $response.find('propstat, d\\:propstat, D\\:propstat').first();
                 if ($propstat.length === 0) {
-                    console.warn('No propstat found for', href);
+                    logWarn('No propstat found for', href);
                     return;
                 }
 
                 // 检查状态码
                 const status = $propstat.find('status, d\\:status, D\\:status').text().trim();
                 if (status && !status.includes('200')) {
-                    console.warn('Non-200 status for', href, ':', status);
+                    logWarn('Non-200 status for', href, ':', status);
                     return;
                 }
 
                 const $prop = $propstat.find('prop, d\\:prop, D\\:prop').first();
                 if ($prop.length === 0) {
-                    console.warn('No prop found for', href);
+                    logWarn('No prop found for', href);
                     return;
                 }
 
@@ -794,7 +795,7 @@ export class WebDAVClient {
             });
 
         } catch (error) {
-            console.warn('Failed to parse WebDAV XML response with cheerio, falling back to regex:', error.message);
+            logWarn('Failed to parse WebDAV XML response with cheerio, falling back to regex:', error.message);
 
             // 回退到正则表达式解析
             return this._parseMultiStatusFallback(xmlData);
