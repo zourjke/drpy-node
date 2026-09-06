@@ -1,3 +1,5 @@
+import {log, logError, logWarn} from '../utils/log.js';
+
 /**
  * 全能代理控制器模块
  * 智能判断URL类型并路由到对应的代理服务
@@ -19,6 +21,38 @@ import {
     createHealthResponse,
     createStatusResponse
 } from '../utils/proxy-util.js';
+import {withTimeout as withTimeoutBase} from '../utils/with-timeout.js';
+import {rewriteM3u8, parseRangeHeader} from '../utils/proxy-common.js';
+import os from 'os';
+import {ENV} from '../utils/env.js';
+
+// 本机地址集合（模块级缓存：回环 + 全部网卡地址，用于识别「代理目标是自己」的合法回环链）
+let selfHostsCache = null;
+function getSelfHosts() {
+    if (selfHostsCache) return selfHostsCache;
+    const hosts = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+    try {
+        for (const list of Object.values(os.networkInterfaces())) {
+            for (const it of (list || [])) {
+                if (it && it.address) hosts.add(String(it.address).toLowerCase());
+            }
+        }
+    } catch {
+        // 网卡枚举失败时仅按回环判定
+    }
+    selfHostsCache = hosts;
+    return hosts;
+}
+
+/**
+ * 纯函数：代理目标是否为对「自身服务」的引用（本机地址 + 自身端口）。
+ * 源 m3u8 重写地址指向本服务 /proxy，壳子把该地址交给本代理即形成回环链，
+ * 属合法场景放行；其余内网地址（含本机非自身端口）保持拦截，不放大 SSRF 探测面。
+ */
+export function isSelfReference(hostname, port, selfPort) {
+    const host = String(hostname || '').toLowerCase();
+    return getSelfHosts().has(host) && Number(port) === Number(selfPort);
+}
 
 /**
  * 全能代理控制器插件
@@ -99,7 +133,7 @@ export default (fastify, options, done) => {
             
             // M3U8相关扩展名
             if (urlLower.includes('.m3u8') || urlLower.includes('.ts')) {
-                // console.log(`[unifiedProxyController] Detected M3U8 by extension: ${url}`);
+                // log(`[unifiedProxyController] Detected M3U8 by extension: ${url}`);
                 return 'm3u8';
             }
 
@@ -110,22 +144,22 @@ export default (fastify, options, done) => {
             ];
             
             if (m3u8Keywords.some(keyword => urlLower.includes(keyword))) {
-                // console.log(`[unifiedProxyController] Detected M3U8 by keyword: ${url}`);
+                // log(`[unifiedProxyController] Detected M3U8 by keyword: ${url}`);
                 return 'm3u8';
             }
 
-            // 3. 通过HEAD请求检测Content-Type（带超时和错误处理）
-            try {
-                const headResponse = await Promise.race([
-                    makeHeadRequest(url, headers),
-                    new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('HEAD request timeout')), 5000)
-                    )
-                ]);
+                // 3. 通过HEAD请求检测Content-Type（带超时和错误处理）
+                try {
+                    // L10：公共超时包装器，race 输家的定时器会被清除
+                    const headResponse = await withTimeoutBase(
+                        makeHeadRequest(url, headers),
+                        5000,
+                        'HEAD request'
+                    );
                 
                 const contentType = headResponse.headers['content-type'] || '';
                 
-                // console.log(`[unifiedProxyController] HEAD response Content-Type: ${contentType} for URL: ${url}`);
+                // log(`[unifiedProxyController] HEAD response Content-Type: ${contentType} for URL: ${url}`);
                 
                 // M3U8相关的Content-Type
                 const m3u8ContentTypes = [
@@ -136,7 +170,7 @@ export default (fastify, options, done) => {
                 ];
                 
                 if (m3u8ContentTypes.some(type => contentType.toLowerCase().includes(type.toLowerCase()))) {
-                    // console.log(`[unifiedProxyController] Detected M3U8 by Content-Type: ${contentType}`);
+                    // log(`[unifiedProxyController] Detected M3U8 by Content-Type: ${contentType}`);
                     return 'm3u8';
                 }
                 
@@ -145,20 +179,20 @@ export default (fastify, options, done) => {
                     contentType.includes('video/mp4') || 
                     contentType.includes('audio/') ||
                     contentType.includes('application/pdf')) {
-                    // console.log(`[unifiedProxyController] Detected file by Content-Type: ${contentType}`);
+                    // log(`[unifiedProxyController] Detected file by Content-Type: ${contentType}`);
                     return 'file';
                 }
                 
             } catch (headError) {
-                console.warn(`[unifiedProxyController] HEAD request failed, using fallback detection: ${headError.message}`);
+                logWarn(`[unifiedProxyController] HEAD request failed, using fallback detection: ${headError.message}`);
             }
 
             // 4. 默认回退到文件代理
-            // console.log(`[unifiedProxyController] Using default file proxy for: ${url}`);
+            // log(`[unifiedProxyController] Using default file proxy for: ${url}`);
             return 'file';
             
         } catch (error) {
-            console.error(`[unifiedProxyController] Detection error, falling back to file proxy: ${error.message}`);
+            logError(`[unifiedProxyController] Detection error, falling back to file proxy: ${error.message}`);
             return 'file';
         }
     }
@@ -177,57 +211,13 @@ export default (fastify, options, done) => {
      * @returns {string} 处理后的 M3U8 内容
      */
     function processM3u8ContentUnified(content, baseUrl, proxyBaseUrl, authCode, headersParam) {
-        // console.log(`[unifiedProxyController] Processing M3U8 content, headersParam present: ${!!headersParam}`);
-        if (headersParam) {
-            // console.log(`[unifiedProxyController] headersParam value: ${headersParam}`);
-        }
-
-        const lines = content.split('\n');
-        const processedLines = [];
-
-        for (let line of lines) {
-            line = line.trim();
-            
-            // 跳过空行和注释行（以 # 开头）
-            if (!line || line.startsWith('#')) {
-                processedLines.push(line);
-                continue;
-            }
-
-            // 处理 TS 文件链接和嵌套 M3U8 链接
-            let processedLine = line;
-            
-            try {
-                // 判断是否为相对链接
-                if (!line.startsWith('http://') && !line.startsWith('https://')) {
-                    // 相对链接，需要转换为绝对链接
-                    const absoluteUrl = new URL(line, baseUrl).href;
-                    // 转换为统一代理链接，传递headers参数
-                    const encodedUrl = encodeURIComponent(absoluteUrl);
-                    processedLine = `${proxyBaseUrl}/unified-proxy/proxy?url=${encodedUrl}&auth=${authCode}`;
-                    if (headersParam) {
-                        const encodedHeaders = encodeURIComponent(headersParam);
-                        processedLine += `&headers=${encodedHeaders}`;
-                    }
-                } else {
-                    // 绝对链接，直接转换为统一代理链接
-                    const encodedUrl = encodeURIComponent(line);
-                    processedLine = `${proxyBaseUrl}/unified-proxy/proxy?url=${encodedUrl}&auth=${authCode}`;
-                    if (headersParam) {
-                        const encodedHeaders = encodeURIComponent(headersParam);
-                        processedLine += `&headers=${encodedHeaders}`;
-                    }
-                }
-            } catch (error) {
-                console.warn(`Failed to process M3U8 line: ${line}`, error);
-                // 处理失败时保持原链接
-                processedLine = line;
-            }
-
-            processedLines.push(processedLine);
-        }
-
-        return processedLines.join('\n');
+        // P2：公共实现见 utils/proxy-common.js rewriteM3u8
+        return rewriteM3u8(content, {
+            baseUrl,
+            endpoint: `${proxyBaseUrl}/unified-proxy/proxy`,
+            authCode,
+            headersParam,
+        });
     }
 
     /**
@@ -252,7 +242,7 @@ export default (fastify, options, done) => {
      * @param {Object} requestHeaders - 请求头
      */
     async function handleFileProxy(request, reply, targetUrl, requestHeaders) {
-        // console.log(`[unifiedProxyController] Handling as file proxy: ${targetUrl}`);
+        // log(`[unifiedProxyController] Handling as file proxy: ${targetUrl}`);
         
         try {
             // 处理 Range 请求
@@ -308,7 +298,7 @@ export default (fastify, options, done) => {
             return reply.send(remoteResponse.stream);
 
         } catch (requestError) {
-            console.error('[unifiedProxyController] File proxy error:', requestError);
+            logError('[unifiedProxyController] File proxy error:', requestError);
             return reply.status(502).send({ 
                 error: `Failed to fetch file: ${requestError.message}` 
             });
@@ -324,7 +314,7 @@ export default (fastify, options, done) => {
      * @param {string} headersParam - headers参数
      */
     async function handleM3u8Proxy(request, reply, targetUrl, requestHeaders, headersParam) {
-        // console.log(`[unifiedProxyController] Handling as M3U8 proxy: ${targetUrl}`);
+        // log(`[unifiedProxyController] Handling as M3U8 proxy: ${targetUrl}`);
         
         try {
             // 判断是M3U8索引文件还是TS片段
@@ -332,7 +322,7 @@ export default (fastify, options, done) => {
             
             if (isM3u8File) {
                 // 处理M3U8索引文件
-                // console.log(`[unifiedProxyController] Processing M3U8 playlist: ${targetUrl}`);
+                // log(`[unifiedProxyController] Processing M3U8 playlist: ${targetUrl}`);
                 
                 // 获取 M3U8 文件内容
                 const m3u8Content = await getRemoteContent(targetUrl, requestHeaders);
@@ -358,12 +348,12 @@ export default (fastify, options, done) => {
                 
             } else {
                 // 处理TS片段文件，使用文件代理逻辑
-                // console.log(`[unifiedProxyController] Processing TS segment: ${targetUrl}`);
+                // log(`[unifiedProxyController] Processing TS segment: ${targetUrl}`);
                 return await handleFileProxy(request, reply, targetUrl, requestHeaders);
             }
 
         } catch (requestError) {
-            console.error('[unifiedProxyController] M3U8 proxy error:', requestError);
+            logError('[unifiedProxyController] M3U8 proxy error:', requestError);
             return reply.status(502).send({ 
                 error: `Failed to fetch M3U8 content: ${requestError.message}` 
             });
@@ -375,7 +365,7 @@ export default (fastify, options, done) => {
      * GET /unified-proxy/health - 检查全能代理服务状态
      */
     fastify.get('/unified-proxy/health', async (request, reply) => {
-        // console.log(`[unifiedProxyController] Health check request`);
+        // log(`[unifiedProxyController] Health check request`);
 
         setCorsHeaders(reply);
         
@@ -410,7 +400,7 @@ export default (fastify, options, done) => {
 
             const { url: urlParam, headers: headersParam, type: forceType } = request.query;
 
-            // console.log(`[unifiedProxyController] ${request.method} request for URL: ${urlParam}`);
+            // log(`[unifiedProxyController] ${request.method} request for URL: ${urlParam}`);
 
             // 验证必需参数
             if (!urlParam) {
@@ -434,14 +424,33 @@ export default (fastify, options, done) => {
                     return reply.status(400).send({ error: `Invalid URL format: ${urlError.message}` });
                 }
 
-                // 安全检查：防止访问内网地址
+                // 安全检查：防止访问内网地址（对「自身服务」的引用除外——
+                // 源 m3u8 重写后的地址指向本服务 /proxy，壳子把它交给本代理形成合法回环链，
+                // 拦截会误伤正常播放；放行条件是本机地址 + 自身端口，不打开对内网其他设备的探测面）
                 const hostname = urlObj.hostname.toLowerCase();
-                if (hostname === 'localhost' || 
-                    hostname === '127.0.0.1' || 
+                const targetPort = Number(urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80));
+                if (isSelfReference(hostname, targetPort, options.PORT)) {
+                    // 套娃防御：目标仍是自身 /unified-proxy 时 302/回环都会无限递归，直接拒绝
+                    if (urlObj.pathname.startsWith('/unified-proxy')) {
+                        return reply.status(400).send({error: 'Nested unified-proxy URL is not allowed'});
+                    }
+                    // env.json 开关 unified_proxy_self_redirect=1：302 让壳子直接向自身内容接口请求，
+                    // 零内容转发、单层代理；默认 0 保持服务端回环转发（兼容不跟随 302 的老壳子）
+                    if (String(ENV.get('unified_proxy_self_redirect', '0')) === '1') {
+                        const host = request.headers.host || request.hostname;
+                        const proto = request.headers['x-forwarded-proto'] || (request.socket.encrypted ? 'https' : 'http');
+                        return reply.redirect(`${proto}://${host}${urlObj.pathname}${urlObj.search}`);
+                    }
+                    // 默认：服务端回环转发（读回目标内容再重写返回）
+                } else if (
+                    hostname === 'localhost' ||
+                    hostname === '127.0.0.1' ||
+                    hostname === '::1' ||
+                    hostname === '[::1]' ||
                     hostname.startsWith('192.168.') ||
                     hostname.startsWith('10.') ||
-                    hostname.startsWith('172.')) {
-                    console.warn(`[unifiedProxyController] Blocked internal network access: ${hostname}`);
+                    /^172\.(1[6-9]|2\d|3[01])\./.test(hostname)) {
+                    logWarn(`[unifiedProxyController] Blocked internal network access: ${hostname}`);
                     return reply.status(403).send({ error: 'Access to internal network addresses is not allowed' });
                 }
 
@@ -450,7 +459,7 @@ export default (fastify, options, done) => {
                 try {
                     customHeaders = decodeParam(headersParam, true);
                 } catch (headerError) {
-                    console.warn(`[unifiedProxyController] Invalid headers parameter: ${headerError.message}`);
+                    logWarn(`[unifiedProxyController] Invalid headers parameter: ${headerError.message}`);
                     // 继续执行，使用空的自定义头
                 }
                 
@@ -470,19 +479,19 @@ export default (fastify, options, done) => {
                     proxyType = await detectProxyType(targetUrl, requestHeaders);
                 }
 
-                // console.log(`[unifiedProxyController] Using proxy type: ${proxyType} for URL: ${targetUrl}`);
+                // log(`[unifiedProxyController] Using proxy type: ${proxyType} for URL: ${targetUrl}`);
 
                 // 根据检测结果选择代理方式，并实现智能回退
                 if (proxyType === 'm3u8') {
                     try {
                         return await handleM3u8Proxy(request, reply, targetUrl, requestHeaders, headersParam);
                     } catch (m3u8Error) {
-                        console.warn(`[unifiedProxyController] M3U8 proxy failed, falling back to file proxy: ${m3u8Error.message}`);
+                        logWarn(`[unifiedProxyController] M3U8 proxy failed, falling back to file proxy: ${m3u8Error.message}`);
                         // M3U8代理失败时，回退到文件代理
                         try {
                             return await handleFileProxy(request, reply, targetUrl, requestHeaders);
                         } catch (fileError) {
-                            console.error(`[unifiedProxyController] Both M3U8 and file proxy failed: ${fileError.message}`);
+                            logError(`[unifiedProxyController] Both M3U8 and file proxy failed: ${fileError.message}`);
                             return reply.status(502).send({ 
                                 error: `Proxy failed: M3U8 (${m3u8Error.message}), File (${fileError.message})` 
                             });
@@ -492,12 +501,12 @@ export default (fastify, options, done) => {
                     try {
                         return await handleFileProxy(request, reply, targetUrl, requestHeaders);
                     } catch (fileError) {
-                        console.warn(`[unifiedProxyController] File proxy failed, trying M3U8 proxy: ${fileError.message}`);
+                        logWarn(`[unifiedProxyController] File proxy failed, trying M3U8 proxy: ${fileError.message}`);
                         // 文件代理失败时，尝试M3U8代理（可能是误判）
                         try {
                             return await handleM3u8Proxy(request, reply, targetUrl, requestHeaders, headersParam);
                         } catch (m3u8Error) {
-                            console.error(`[unifiedProxyController] Both file and M3U8 proxy failed: ${m3u8Error.message}`);
+                            logError(`[unifiedProxyController] Both file and M3U8 proxy failed: ${m3u8Error.message}`);
                             return reply.status(502).send({ 
                                 error: `Proxy failed: File (${fileError.message}), M3U8 (${m3u8Error.message})` 
                             });
@@ -506,7 +515,7 @@ export default (fastify, options, done) => {
                 }
 
             } catch (error) {
-                console.error('[unifiedProxyController] Request processing error:', error);
+                logError('[unifiedProxyController] Request processing error:', error);
                 return reply.status(500).send({ error: error.message });
             }
         }
@@ -517,7 +526,7 @@ export default (fastify, options, done) => {
      * GET /unified-proxy/status - 获取代理服务状态
      */
     fastify.get('/unified-proxy/status', async (request, reply) => {
-        // console.log(`[unifiedProxyController] Status request`);
+        // log(`[unifiedProxyController] Status request`);
 
         try {
             setCorsHeaders(reply);
@@ -569,7 +578,7 @@ export default (fastify, options, done) => {
             
             return reply.send(statusData);
         } catch (error) {
-            console.error('[unifiedProxyController] Status request error:', error);
+            logError('[unifiedProxyController] Status request error:', error);
             return reply.status(500).send({ error: error.message });
         }
     });
