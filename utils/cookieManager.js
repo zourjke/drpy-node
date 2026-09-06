@@ -1,3 +1,4 @@
+import {log} from './log.js';
 // "use strict" is not required in ES6 modules as they are always in strict mode
 
 // Exporting functions and constants as named exports and default export
@@ -82,7 +83,7 @@ export function parse(input, options) {
 
     // If input is an array, process each string
     const headers = Array.isArray(input) ? input : [input];
-    // console.log(headers);
+    // log(headers);
     for (const str of headers) {
         const len = str.length;
         if (len < 2) continue;
