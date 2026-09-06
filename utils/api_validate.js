@@ -1,3 +1,4 @@
+import {log, logError} from './log.js';
 import path from 'path';
 import {readFile} from 'fs/promises';
 import fileHeaderManager from "./fileHeaderManager.js";
@@ -15,14 +16,14 @@ export const validateBasicAuth = (request, reply, done) => {
     }
     if (request.url.startsWith('/config/')) {
         let cf_path = request.url.slice(8).split('?')[0];
-        // console.log(cf_path);
+        // log(cf_path);
         if (!['index.js', 'index.js.md5', 'index.config.js', 'index.config.js.md5'].includes(cf_path)) {
             done();
             return
         }
-        console.log(`[validateBasicAuth] 猫配置文件 ${cf_path} 进入Basic登录鉴权`);
+        log(`[validateBasicAuth] 猫配置文件 ${cf_path} 进入Basic登录鉴权`);
     }
-    // console.log('进入了basic验证');
+    // log('进入了basic验证');
     let authHeader = request.headers.authorization;
 
     // 支持通过 query 参数传递 auth (用于 WebSocket 等无法自定义 Header 的场景)
@@ -67,9 +68,9 @@ export const validatePwd = async (request, reply) => {
     }
     if (request.url.startsWith('/config/')) {
         let cf_path = request.url.slice(8).split('?')[0];
-        // console.log(cf_path);
+        // log(cf_path);
         if (['index.js', 'index.js.md5', 'index.config.js', 'index.config.js.md5'].includes(cf_path)) {
-            console.log(`[validatePwd] 猫配置文件 ${cf_path} 跳过接口密码鉴权`);
+            log(`[validatePwd] 猫配置文件 ${cf_path} 跳过接口密码鉴权`);
             return
         }
     }
@@ -89,10 +90,10 @@ export const validateJs = async (request, reply, dr2Dir) => {
     if (request.url.startsWith('/js/')) {
         try {
             const fileName = decodeURIComponent(request.url.replace('/js/', '').split('?')[0]);
-            // console.log('fileName', fileName);
+            // log('fileName', fileName);
             // 获取文件系统路径
             const filePath = path.join(dr2Dir, fileName);
-            // console.log('filePath', filePath);
+            // log('filePath', filePath);
 
             // 读取文件内容
             let content = await readFile(filePath, 'utf8');
@@ -121,7 +122,7 @@ export const validateJs = async (request, reply, dr2Dir) => {
             if (error.code === 'ENOENT') return;
 
             // 其他错误处理
-            console.error(`File processing error: ${error.message}`);
+            logError(`File processing error: ${error.message}`);
             return reply.code(500).send('Internal Server Error');
         }
     }
@@ -131,7 +132,7 @@ export const validatHtml = async (request, reply, rootDir) => {
     if (request.url.endsWith('index.html')) {
         try {
             const filePath = path.join(rootDir, request.url);
-            // console.log('filePath', filePath);
+            // log('filePath', filePath);
             // 读取文件内容
             let content = await readFile(filePath, 'utf8');
             content = content.replaceAll('$SECURITY_CODE', SECURITY_CODE);
@@ -145,7 +146,7 @@ export const validatHtml = async (request, reply, rootDir) => {
             if (error.code === 'ENOENT') return;
 
             // 其他错误处理
-            console.error(`File processing error: ${error.message}`);
+            logError(`File processing error: ${error.message}`);
             return reply.code(500).send('Internal Server Error');
         }
     }
