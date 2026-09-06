@@ -6,6 +6,7 @@
   title: '粤漫之家',
   author: '不告诉你',
   '类型': '影视',
+  logo:'https://www.ymvid.com/favicon/favicon.ico',
   lang: 'ds'
 })
 */
@@ -15,6 +16,7 @@ var rule = {
     author: '不告诉你',
     host: 'https://www.ymvid.com',
     url: '/list/fypage/fyfilter',
+    logo:'https://www.ymvid.com/favicon/favicon.ico',
     searchUrl: '/search?p=fypage&keyword=**',//需要登陆
     searchable: 0,
     quickSearch: 0,

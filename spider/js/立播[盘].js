@@ -14,10 +14,10 @@ var rule = {
     author: 'EylinSir',
     title: 'libvio影视',
     类型: '影视',
-    host: 'https://www.libvio.cc',
+    host: 'https://libhd.com',
     headers: {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36',
-        'Referer': 'https://www.libvio.cc'
+        'Referer': 'https://libhd.com'
     },
     编码: 'utf-8',
     timeout: 20000,
@@ -34,7 +34,6 @@ var rule = {
     limit: 90,
     double: false,
     play_parse: true,
-  //  class_parse: '.stui-header__menu li:gt(0):lt(7);a&&Text;a&&href;/(\\d+).html',
 
     推荐: async function(tid, pg, filter, extend) {
         return this.一级();
@@ -80,70 +79,87 @@ var rule = {
             VOD.vod_remarks = descLines.join(' ');
 
             let playform = [], playurls = [], playPans = [];
-            let sections = pdfa(html, '.stui-vodlist__head');
 
+            const parsePanUrl = async (url, name) => {
+                url = url.replace(/`/g, '').trim();
+                playPans.push(url);
+
+                if (url.includes('pan.quark.cn')) {
+                    let sd = await Quark.getShareData(url);
+                    if (!sd) return [];
+                    return (await Quark.getFilesByShareUrl(sd)).map(v => {
+                        let fileName = v.file_name || v.name || name;
+                        let token = [sd.shareId, v.stoken, v.fid, v.share_fid_token, v.subtitle?.fid || '', v.subtitle?.share_fid_token || ''].join('*');
+                        return `${fileName}$${token}`;
+                    });
+                }
+
+                if (url.includes('drive.uc.cn')) {
+                    let sd = await UC.getShareData(url);
+                    if (!sd) return [];
+                    return (await UC.getFilesByShareUrl(sd)).map(v => {
+                        let fileName = v.file_name || v.name || name;
+                        let token = [sd.shareId, v.stoken, v.fid, v.share_fid_token, v.subtitle?.fid || '', v.subtitle?.share_fid_token || ''].join('*');
+                        return `${fileName}$${token}`;
+                    });
+                }
+
+                if (url.includes('pan.baidu.com')) {
+                    let sd = await Baidu2.getShareData(url);
+                    if (!sd) return [];
+                    return Object.values(sd).flat().map(v => {
+                        let fileName = v.file_name || v.name || name;
+                        let token = [v.path, v.uk, v.shareid, v.fsid].join('*');
+                        return `${fileName}$${token}`;
+                    });
+                }
+
+                if (url.includes('pan.xunlei.com')) {
+                    let sd = await Xun.getShareData(url);
+                    if (!sd) return [];
+                    return Object.values(sd).flat().map(v => {
+                        let fileName = v.name || name;
+                        let token = [v.fileId, v.share_id, v.parent_id, v.pass_code_token].join('*');
+                        return `${fileName}$${token}`;
+                    });
+                }
+
+                return [];
+            };
+
+            let sections = pdfa(html, '.stui-vodlist__head');
             for (let sec of sections) {
                 let lineName = (pdfh(sec, '.stui-pannel__head h3&&Text') || pdfh(sec, 'h3&&Text') || '').replace(/[\uE000-\uF8FF]/g, '').trim();
                 if (!lineName) continue;
+                if (/夸克|UC|迅雷|百度|网盘|下载/.test(lineName)) continue;
 
-                let isPan = /夸克|UC|百度|网盘|下载/.test(lineName);
                 let links = pdfa(sec, '.stui-content__playlist li a');
+                let episodeList = links.map(a => {
+                    let title = pdfh(a, 'a&&Text');
+                    let href = pd(a, 'a&&href', input);
+                    return title && href ? `${title}$${href}` : '';
+                }).filter(Boolean);
+
+                if (episodeList.length) {
+                    playform.push(lineName);
+                    playurls.push(episodeList.join('#'));
+                }
+            }
+
+            let netdiskPanels = pdfa(html, '.playlist-panel.netdisk-panel');
+            for (let panel of netdiskPanels) {
+                let lineName = pdfh(panel, '.netdisk-head-inner h3&&Text') || '';
+                lineName = lineName.replace(/[\uE000-\uF8FF]/g, '').trim();
+                if (!lineName) continue;
+
                 let episodeList = [];
-
-                if (isPan) {
-                    let panUrls = new Set();
-                    for (let a of links) {
-                        let url = pd(a, 'a&&href', input);
-                        if (!url) continue;
-                        try {
-                            let playHtml = await request(url);
-                            let matches = [...playHtml.matchAll(/var player_[^=]*=\s*({[^}]+})/g)];
-                            for (let m of matches) {
-                                try {
-                                    let data = JSON.parse(m[1]);
-                                    if (data.from && data.url) {
-                                        let u = data.url.replace(/\\\//g, '/');
-                                        panUrls.add(u);
-                                        playPans.push(u);
-                                    }
-                                } catch {}
-                            }
-                        } catch {}
-                    }
-
-                    for (let u of panUrls) {
-                        let videos = [];
-                        let sd = null;
-
-                        if (u.includes('pan.quark.cn')) {
-                            sd = await Quark.getShareData(u);
-                            if (sd) videos = await Quark.getFilesByShareUrl(sd);
-                        } else if (u.includes('drive.uc.cn')) {
-                            sd = await UC.getShareData(u);
-                            if (sd) videos = await UC.getFilesByShareUrl(sd);
-                        } else if (u.includes('pan.baidu.com')) {
-                            sd = await Baidu2.getShareData(u);
-                            if (sd) videos = Object.values(sd).flat();
-                        }
-
-                        videos.forEach(v => {
-                            let name = v.file_name || v.name || '文件';
-                            let token;
-                            if (u.includes('baidu.com')) {
-                                token = [v.path, v.uk, v.shareid, v.fsid].join('*');
-                            } else {
-                                if (!sd) return;
-                                token = [sd.shareId, v.stoken, v.fid, v.share_fid_token, v.subtitle?.fid || '', v.subtitle?.share_fid_token || ''].join('*');
-                            }
-                            episodeList.push(`${name}$${token}`);
-                        });
-                    }
-                } else {
-                    episodeList = links.map(a => {
-                        let title = pdfh(a, 'a&&Text');
-                        let href = pd(a, 'a&&href', input);
-                        return title && href ? `${title}$${href}` : '';
-                    }).filter(Boolean);
+                for (let item of pdfa(panel, '.netdisk-list .netdisk-item')) {
+                    let url = pd(item, 'a&&href', input);
+                    if (!url) continue;
+                    let name = pdfh(item, '.netdisk-name&&Text') || '文件';
+                    name = name.replace(/[\uE000-\uF8FF]/g, '').trim();
+                    let items = await parsePanUrl(url, name);
+                    episodeList.push(...items);
                 }
 
                 if (episodeList.length) {
@@ -175,41 +191,75 @@ var rule = {
     },
 
     lazy: async function(flag, id, flags) {
-        let ids = this.input.split('*');
         let { mediaProxyUrl } = this;
 
         if (/夸克|视频下载 \(夸克\)/.test(flag)) {
-            let down = await Quark.getDownload(ids[0], ids[1], ids[2], ids[3], true);
-            let urls = [];
-            down.forEach(t => {
-                if (t.url) {
-                    urls.push(`猫${t.name}`, `http://127.0.0.1:5575/proxy?thread=${ENV.get('thread') || 6}&chunkSize=1024&url=${encodeURIComponent(t.url)}`);
-                    urls.push(t.name, `${t.url}#isVideo=true##fastPlayMode##threads=20#`);
+            let ids = id.split('*'), urls = [];
+            let headers = { 'Cookie': ENV.get('quark_cookie') };
+
+            (await Quark.getUrl(ids[0], ids[1], ids[2], ids[3])).forEach(item => {
+                if (item) {
+                    urls.push("无限" + item.name, item.url + "#isVideo=true##fastPlayMode##threads=20#");
+                    urls.push("无限猫" + item.name, `http://127.0.0.1:5575/proxy?thread=${ENV.get('thread') || 6}&chunkSize=256&url=` + encodeURIComponent(item.url) + '&header=' + encodeURIComponent(JSON.stringify(headers)));
                 }
             });
-            (await Quark.getLiveTranscoding(ids[0], ids[1], ids[2], ids[3]))
-                .filter(t => t.accessable)
-                .forEach(t => {
-                    let res = { low: '流畅', high: '高清', super: '超清' }[t.resolution] || t.resolution;
-                    urls.push(res, `${t.video_info.url}#isVideo=true##fastPlayMode##threads=20#`);
-                });
-            return { parse: 0, url: urls, header: { 'Cookie': ENV.get('quark_cookie') } };
+
+            (await Quark.getDownload(ids[0], ids[1], ids[2], ids[3], true)).forEach(t => {
+                if (t.url) {
+                    urls.push("猫" + t.name, `http://127.0.0.1:5575/proxy?thread=${ENV.get('thread') || 6}&chunkSize=256&url=` + encodeURIComponent(t.url));
+                    urls.push(t.name, t.url + "#isVideo=true##fastPlayMode##threads=20#");
+                }
+            });
+
+            (await Quark.getLiveTranscoding(ids[0], ids[1], ids[2], ids[3])).filter(t => t.accessable).forEach(t => {
+                urls.push(t.resolution === 'low' ? "流畅" : t.resolution === 'high' ? "高清" : t.resolution === 'super' ? "超清" : t.resolution, t.video_info.url + "#isVideo=true##fastPlayMode##threads=20#");
+            });
+
+            return { parse: 0, url: urls, header: headers };
         }
 
         if (/UC|视频下载\(UC\)/.test(flag)) {
+            let ids = id.split('*');
             let down = await UC.getDownload(ids[0], ids[1], ids[2], ids[3], true);
             return await UC.getLazyResult(down, mediaProxyUrl);
         }
 
         if (flag.includes('百度')) {
+            let ids = id.split('*');
             let url = await Baidu2.getAppShareUrl(ids[0], ids[1], ids[2], ids[3]);
             return {
                 parse: 0,
-                url: [
-                    "原画", `${url}#isVideo=true##fastPlayMode##threads=10#`,
-                    "原代本", `http://127.0.0.1:7777/?thread=${ENV.get('thread') || 6}&form=urlcode&randUa=1&url=${encodeURIComponent(url)}`
-                ],
-                header: { "User-Agent": 'netdisk;P2SP;2.2.91.136;android-android;' }
+                url: ["原画", url + "#isVideo=true##fastPlayMode##threads=10#"],
+                header: {
+                    "User-Agent": 'netdisk;P2SP;2.2.91.136;android-android;',
+                    "Cookie": ENV.get('baidu_cookie'),
+                }
+            };
+        }
+
+        if (/迅雷|视频下载\(迅雷\)/.test(flag)) {
+            log('迅雷云盘开始解析');
+            let ids = id.split('*');
+            let urls = await Xun.getShareUrl(ids[0], ids[1], ids[3]);
+            const header = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36"
+            };
+            if (ENV.get('xun_auth') !== '') {
+                try {
+                    let url = await Xun.getDownloadUrl(ids[0], ids[1], ids[3]);
+                    if (url !== '') {
+                        const proxyHeader = `&header=${encodeURIComponent(JSON.stringify(header))}`;
+                        urls.push('原画', url + "#isVideo=true##fastPlayMode##threads=20#");
+                        urls.push("猫画", `http://127.0.0.1:5575/proxy?thread=${ENV.get('thread') || 6}&chunkSize=256&url=` + encodeURIComponent(url) + proxyHeader);
+                    }
+                } catch (err) {
+                    log(`迅雷本地凭证可能已过期，请重新登录: ${err.message}`);
+                }
+            }
+            return {
+                parse: 0,
+                url: urls,
+                header: header
             };
         }
 

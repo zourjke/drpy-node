@@ -12,88 +12,92 @@
 */
 
 const { req_proxy } = $.require('./_lib.request.js');
-const MAX_CONCUR = 5;
-let pageCache = { video: {}, search: {} };
-let searchState = { key: '', idx: 0 };
+const MAX = 5;
+let pc = { v: {}, s: {} };
+let st = { k: '', i: 0 };
 
-const diskRules = {
-  '百度': { reg: /pan\.baidu\.com/, icon: '百度.png' },
-  '夸克': { reg: /pan\.quark\.cn/, icon: '夸克.png' },
-  '阿里': { reg: /www\.(aliyundrive|alipan)\.com/, icon: '阿里.png' },
-  '移动': { reg: /(yun|caiyun)\.139\.com/, icon: '移动.png' },
-  '天翼': { reg: /cloud\.189\.cn/, icon: '天翼.png' },
-  '115': { reg: /(www\.115|115cdn)\.com/, icon: '115.png' },
-  'UC': { reg: /pan\.uc\.cn|drive\.uc\.cn/, icon: 'UC.png' },
-  '123': { reg: /123pan\.(?:com|cn)|123(?:684|865|912|592)\.com/i, icon: '123.png' },
-  '磁力': { reg: /magnet:\?xt=urn:btih:[\da-fA-F]{32,40}/gi, icon: '磁力.png' } 
+const R_DISK = {
+  '百度': { r: /pan\.baidu\.com/, i: '百度.png' },
+  '夸克': { r: /pan\.quark\.cn/, i: '夸克.png' },
+  '阿里': { r: /www\.(aliyundrive|alipan)\.com/, i: '阿里.png' },
+  '移动': { r: /(yun|caiyun)\.139\.com/, i: '移动.png' },
+  '天翼': { r: /cloud\.189\.cn/, i: '天翼.png' },
+  '115': { r: /(www\.115|115cdn)\.com/, i: '115.png' },
+  'UC': { r: /(pan|drive)\.uc\.cn/, i: 'UC.png' },
+  '123': { r: /123pan\.(com|cn)|123(684|865|912|592)\.com/i, i: '123.png' },
+  '迅雷': { r: /pan\.xunlei\.com/, i: '迅雷.jpg' },
+  '磁力': { r: /magnet:\?xt=urn:btih:[0-9a-f]{32,40}/i, i: '磁力.png' }
 };
 
-const EPISODE_COMBINED_REGEX = /((?:更新至|全|第)\s*\d+\s*集)|((?:更新至|全|第)\s*[一二三四五六七八九十百千万亿]+\s*集)|((?:更至|更)\s*(?:EP)?\s*\d+)/;
-const QUALITY_REGEX = /(SDR|HDR|HQ|4K|1080[Pp])/g;
-const TITLE_FILTER_REG = /^[^\u4e00-\u9fa5A-Za-z0-9\(\[\{（【《「『〔〖〈﹝［]+/;
-const TITLE_CLEAN_REG = /(名称：|资源标题：|名称[：:])/g;
-const EPISODE_CLEAN_REG = /(全|共)\s*\d+\s*集|\d+\s*集\s*全|更(新|至)?\s*\d+\s*集|第\s*\d+\s*-\s*\d+\s*集|更.*|剧情.*|（又名：.*）|(SDR|HDR|HQ|4K|1080[Pp])/g;
-
-function getDiskInfo(url) {
-  if (diskRules.磁力.reg.test(url)) return { name: '磁力', icon: diskRules.磁力.icon };
-  
-  const host = url.match(/^(?:https?:\/\/)?([^\/]+)/)?.[1] || '';
-  for (const [name, { reg, icon }] of Object.entries(diskRules)) {
-    if (name !== '磁力' && reg.test(host)) return { name, icon };
+const R_BRACKET_ALL = /[\(\（\[【\{<].*?[\)\）\]】\}>]/g;
+const R_CUT_OFF = /(?:\s+|(?=[第全共更完S\d]))(?:第|全|共|更|至|完结|S\d|EP?\d|20\d{2}|4K|1080|臻彩|高码|SDR|HDR|60帧|剧情|国漫|年番|喜剧|\d+B|\[|\d+\s*集).*/i;
+const R_TAIL_FIX = /(?:[^\u4e00-\u9fa5A-Za-z0-9]+|\s+[第全共更至集])\s*$/;
+const R_EP_STRICT = /\bS\d+E\d+\b|\bEP\d{1,4}\b|(?:\d{1,4}|[一二三四五六七八九十]+)\s*(?:集|话|期)|(?:第|更新?至?|全|共|至)\s*(?:\d{1,4}|[一二三四五六七八九十]+)(?:[-~]\d+)?\s*(?:集|话|期)?|完结/gi;
+const R_QL_STRICT = /(?:4|8)K|1080[Pp]|HDR|Dolby|Atmos/g;
+const getDisk = (u) => {
+  if (u.startsWith('magnet')) return { n: '磁力', i: R_DISK['磁力'].i };
+  const h = (u.match(/:\/\/(.*?)(?:\/|$)/) || [])[1];
+  if (!h) return null;
+  for (let k in R_DISK) {
+    if (k !== '磁力' && R_DISK[k].r.test(h)) return { n: k, i: R_DISK[k].i };
   }
   return null;
-}
+};
 
-function cleanTitle(text) {
-  const titleLine = (text.split('\n').find(line => {
-    const trimLine = line.trim();
-    return !/^[A-Za-z]+\s+\d+$|https?:\/\/\S+/i.test(trimLine);
-  }) || text.split('\n')[0] || '未知资源').trim();
-  
-  return titleLine
-    .replace(TITLE_CLEAN_REG, '')
-    .replace(TITLE_FILTER_REG, '')
-    .replace(EPISODE_CLEAN_REG, '')
+const cTitle = (txt) => {
+  let line = txt.split('\n').find(x => !/^[a-z]+\s+\d+$|^http/i.test(x.trim())) || txt.split('\n')[0];
+  line = (line || '未知资源')
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/^(名称|资源标题|中文名|片名)[：:\s]*/i, '')
     .trim();
-}
+  line = line.replace(R_BRACKET_ALL, ' ');
+  line = line.replace(R_CUT_OFF, '');
+  let prev;
+  do {
+    prev = line;
+    line = line.replace(R_TAIL_FIX, '').trim();
+  } while (line !== prev);
+  return line;
+};
 
-function getRemarks(text) {
-  const episodeMatch = text.match(EPISODE_COMBINED_REGEX);
-  const qualityInfo = (text.match(QUALITY_REGEX) || []).filter((v, i, a) => a.indexOf(v) === i);
-  
-  const remarksParts = [];
-  if (episodeMatch) remarksParts.push(episodeMatch[0]);
-  if (qualityInfo.length) remarksParts.push(...qualityInfo);
-  return remarksParts.join(' ');
-}
+const getTags = (txt) => {
+  const epMatch = txt.match(R_EP_STRICT);
+  let ep = '';
+  if (epMatch) {
+    ep = epMatch.reduce((a, b) => a.length > b.length ? a : b);
+    if (/^至\s*\d/.test(ep)) {
+      ep = '更' + ep;
+    }
+    else if (/^\d+\s*集$/.test(ep)) {
+      ep = '第' + ep;
+    }
+  }
+  const ql = (txt.match(R_QL_STRICT) || []).filter((v, i, a) => a.indexOf(v) === i);
+  return [ep, ...ql].filter(Boolean).join(' ');
+};
 
-function addLinkToResults(url, ctx) {
-  const { diskCount, playUrls, playFroms, diskTypes, linkSet } = ctx;
-  const diskInfo = getDiskInfo(url);
-  if (!diskInfo) return;
+const addLink = (u, ctx) => {
+  const d = getDisk(u);
+  if (!d) return;
+  ctx.s.add(u);
+  ctx.c[d.n] = (ctx.c[d.n] || 0) + 1;
+  const tag = ctx.c[d.n] > 1 ? `${d.n}${ctx.c[d.n]}` : d.n;
+  const purl = d.n === '磁力' ? u : `点击播放$push://${u.replace(/#/g, '%23')}`;
+  ctx.u.push(purl);
+  ctx.f.push(tag);
+  ctx.t.add(d.n);
+};
 
-  linkSet.add(url);
-  diskCount[diskInfo.name] = (diskCount[diskInfo.name] || 0) + 1;
-  const fromName = diskCount[diskInfo.name] > 1 ? `${diskInfo.name}${diskCount[diskInfo.name]}` : diskInfo.name;
-  
-  const playUrl = diskInfo.name === '磁力' ? url : `点击播放$push://${url.replace(/\#/g, '%23')}`;
-  playUrls.push(playUrl);
-  playFroms.push(fromName);
-  diskTypes.add(diskInfo.name);
-}
+const getUrl = (base, k, cache) => k ? `${base}${cache[k] || ''}` : base;
 
-function getPageUrl(baseUrl, cacheKey, cache) {
-  return cacheKey ? `${baseUrl}${cache[cacheKey] || ''}` : baseUrl;
-}
-
-const rule = {
+var rule = {
   类型: '影视',
   title: 'TG频道',
   author: 'EylinSir',
   host: 'https://t.me',
   url: '/s/fyclass',
   searchUrl: '?q=**',
-  Pan_API: 'https://pancheck.banye.tech:7777',  // 网盘链接有效性检测过滤api，需自行替换
+  Pan_API: 'http://127.0.0.1:6080', // 网盘链接有效性检测过滤api，需自行替换
   logo: 'https://api.xinac.net/icon/?url=https://t.me',
   searchable: 1,
   quickSearch: 1,
@@ -108,159 +112,126 @@ const rule = {
   },
 
   lazy: async function(flag, id) {
-    const realUrl = id.includes('$') ? id.split('$').slice(1).join('$').replace(/%23/g, '\#') : id;
-    return { url: realUrl };
+    return { url: id.includes('$') ? id.split('$').slice(1).join('$').replace(/%23/g, '#') : id };
   },
 
   parseMessages: async function(html) {
     const { pdfa, pdfh } = this;
     const $ = require('cheerio').load(html);
-    const messages = pdfa(html, '.tgme_widget_message') || [];
-    let results = [];
-    let allLinks = [];
-
-    for (const item of messages) {
-      const textHtml = pdfh(item, '.tgme_widget_message_text&&Html') || '';
-      const text = textHtml.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
-      if (!text) continue;
-
-      const title = cleanTitle(text);
-      
-      const linkCtx = {
-        diskCount: {},
-        playUrls: [],
-        playFroms: [],
-        diskTypes: new Set(),
-        linkSet: new Set()
-      };
-
-      [...pdfa(item, '.tgme_widget_message_text a'), ...pdfa(item, '.tgme_widget_message_inline_keyboard a')].forEach(a => {
-        const url = (pdfh(a, 'a&&href') || '').replace(/&\#$/, '').trim();
-        if (/^https?:\/\//.test(url)) addLinkToResults(url, linkCtx);
+    const msgs = pdfa(html, '.tgme_widget_message') || [];
+    let res = [], allLinks = [];
+    for (const m of msgs) {
+      const htm = pdfh(m, '.tgme_widget_message_text&&Html') || '';
+      const txt = htm.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
+      if (!txt) continue;
+      const title = cTitle(txt);
+      const finalTitle = title || txt.split('\n')[0].replace(/https?:\/\/\S+/g, '').trim();
+      const ctx = { c: {}, u: [], f: [], t: new Set(), s: new Set() };
+      const nodes = [
+        ...pdfa(m, '.tgme_widget_message_text a'), 
+        ...pdfa(m, '.tgme_widget_message_inline_keyboard a')
+      ];
+      nodes.forEach(a => {
+        const u = (pdfh(a, 'a&&href') || '').replace(/&#$/, '').trim();
+        if (/^https?:\/\//.test(u)) addLink(u, ctx);
       });
-
-      (text.match(diskRules.磁力.reg) || []).forEach(magnet => {
-        addLinkToResults(magnet.trim(), linkCtx);
-      });
-
-      if (linkCtx.playUrls.length === 0) continue;
-
+      (txt.match(new RegExp(R_DISK['磁力'].r.source, 'gi')) || []).forEach(mg => addLink(mg.trim(), ctx));
+      if (!ctx.u.length) continue;
       let pic = '';
-      const photoStyle = $(item).find('.tgme_widget_message_photo_wrap').attr('style') || '';
-      const picMatch = photoStyle.match(/background-image\s*:\s*url\(['"]?([^'"]+)['"]?\)/i);
-      if (picMatch?.[1]) {
-        pic = picMatch[1];
-      } else if (linkCtx.diskTypes.size) {
-        const firstType = Array.from(linkCtx.diskTypes)[0];
-        pic = urljoin(this.publicUrl, `./images/icon_cookie/${diskRules[firstType]?.icon || '网盘.png'}`);
+      const sty = $(m).find('.tgme_widget_message_photo_wrap').attr('style') || '';
+      const pm = sty.match(/url\(['"]?([^'"]+)['"]?\)/i);
+      if (pm?.[1]) {
+        pic = 'https://wsrv.nl/?url=' + encodeURIComponent(pm[1]) + '&output=jpg';
+      } else if (ctx.t.size) {
+        const ft = [...ctx.t][0];
+        pic = urljoin(this.publicUrl, `./images/icon_cookie/${R_DISK[ft]?.i || '网盘.png'}`);
       }
-
-      const dateTime = pdfh(item, '.tgme_widget_message_date time&&datetime') || '';
-      const year = dateTime.split('T')[0]?.substring(5) || '';
-      const remarks = getRemarks(text);
-      const vodYear = year + (linkCtx.diskTypes.size ? ` ${Array.from(linkCtx.diskTypes).join('/')}` : '');
-      const linkArr = Array.from(linkCtx.linkSet);
-
-      results.push({
-        vod_name: title,
-        vod_year: vodYear,
-        vod_remarks: remarks,
+      const dt = pdfh(m, '.tgme_widget_message_date time&&datetime') || '';
+      const yr = dt.split('T')[0]?.substring(5) || '';
+      const rm = getTags(txt);
+      const links = [...ctx.s];
+      res.push({
+        vod_name: finalTitle,
+        vod_year: yr + (ctx.t.size ? ` ${[...ctx.t].join('/')}` : ''),
+        vod_remarks: rm,
         vod_pic: pic,
         vod_id: JSON.stringify({
-          vod_name: title,
+          vod_name: finalTitle,
           vod_pic: pic,
-          vod_content: text.split('\n').slice(1).join('\n'),
-          vod_play_from: linkCtx.playFroms.join('$$$'),
-          vod_play_url: linkCtx.playUrls.join('$$$')
+          vod_content: txt.split('\n').slice(1).join('\n'),
+          vod_play_from: ctx.f.join('$$$'),
+          vod_play_url: ctx.u.join('$$$')
         }),
-        links: linkArr
+        links: links
       });
-      allLinks.push(...linkArr);
+      allLinks.push(...links);
     }
-
     if (allLinks.length) {
       try {
-        const [magnetLinks, nonMagnetLinks] = [
-          allLinks.filter(link => diskRules.磁力.reg.test(link)),
-          allLinks.filter(link => !diskRules.磁力.reg.test(link))
-        ];
-        const validLinks = new Set([...magnetLinks]);
-
-        const apiLinks = nonMagnetLinks;
-        if (apiLinks.length) {
-          const res = JSON.parse(await request(`${this.Pan_API}/api/v1/links/check`, {
+        const mag = allLinks.filter(l => l.startsWith('magnet'));
+        const http = allLinks.filter(l => !l.startsWith('magnet'));
+        const valid = new Set(mag);
+        if (http.length) {
+          const check = JSON.parse(await request(`${this.Pan_API}/api/v1/links/check`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ links: apiLinks })
+            body: JSON.stringify({ links: http })
           }));
-          [...(res.valid_links || []), ...(res.pending_links || [])].forEach(link => validLinks.add(link));
+          [...(check.valid_links || []), ...(check.pending_links || [])].forEach(l => valid.add(l));
         }
-
-        results = results.filter(item => item.links.some(link => validLinks.has(link)));
-      } catch (e) {
-        console.error('链接校验失败:', e.message);
-      }
+        res = res.filter(it => it.links.some(l => valid.has(l)));
+      } catch (e) { console.error('校验误:', e.message); }
     }
-
-    results.forEach(item => delete item.links);
-    const nextPage = $('link[rel="prev"]').attr('href')?.split('?')?.[1] || '';
-    return { results: results.reverse(), nextPage: nextPage ? `?${nextPage}` : "0" };
+    res.forEach(it => delete it.links);
+    const nxt = $('link[rel="prev"]').attr('href')?.split('?')?.[1];
+    return { results: res.reverse(), nextPage: nxt ? `?${nxt}` : "0" };
   },
 
   一级: async function() {
     const { input, MY_PAGE } = this;
-    if (!input || (MY_PAGE !== 1 && (!pageCache.video[input] || pageCache.video[input] === "0"))) return [];
-    
-    const url = getPageUrl(input, MY_PAGE !== 1 ? input : '', pageCache.video);
-    const html = await req_proxy(url, 'get', this.headers);
+    if (!input || (MY_PAGE !== 1 && (!pc.v[input] || pc.v[input] === "0"))) return [];
+    const u = getUrl(input, MY_PAGE !== 1 ? input : '', pc.v);
+    const html = await req_proxy(u, 'get', this.headers);
     const { results, nextPage } = await this.parseMessages(html);
-    pageCache.video[input] = nextPage;
+    pc.v[input] = nextPage;
     return results;
   },
 
-  二级: function(ids) {
-    return JSON.parse(ids);
-  },
+  二级: function(ids) { return JSON.parse(ids); },
 
   搜索: async function() {
     const { KEY, MY_PAGE } = this;
     if (!KEY) return [];
-    const { class: channels } = await this.class_parse();
-    if (!channels?.length) return [];
-
-    if (MY_PAGE === 1 || searchState.key !== KEY) {
-      pageCache.search = {};
-      searchState = { key: KEY, idx: 0 };
+    const { class: cls } = await this.class_parse();
+    if (!cls?.length) return [];
+    if (MY_PAGE === 1 || st.k !== KEY) {
+      pc.s = {};
+      st = { k: KEY, i: 0 };
     }
-
-    let { idx } = searchState;
-    if (idx >= channels.length && !Object.values(pageCache.search).some(p => p && p !== "0")) return [];
-    if (idx >= channels.length) idx = searchState.idx = 0;
-
-    const batch = channels.slice(idx, idx + MAX_CONCUR);
-    const results = (await Promise.all(batch.map(async channel => {
-      const chanName = channel.type_id?.replace(/^\//, '');
-      if (!chanName || pageCache.search[chanName] === "0") return [];
-
-      const baseUrl = `${this.host}/s/${chanName}?q=${encodeURIComponent(KEY)}`;
-      const url = getPageUrl(baseUrl, chanName, pageCache.search);
-
+    let { i } = st;
+    if (i >= cls.length && !Object.values(pc.s).some(p => p && p !== "0")) return [];
+    if (i >= cls.length) i = st.i = 0;
+    const batch = cls.slice(i, i + MAX);
+    const res = (await Promise.all(batch.map(async c => {
+      const cn = c.type_id?.replace(/^\//, '');
+      if (!cn || pc.s[cn] === "0") return [];
+      const base = `${this.host}/s/${cn}?q=${encodeURIComponent(KEY)}`;
+      const u = getUrl(base, cn, pc.s);
       try {
-        const html = await req_proxy(url, 'get', this.headers);
-        const { results: chanRes, nextPage } = await this.parseMessages(html);
-        pageCache.search[chanName] = nextPage === "0" ? "0" : nextPage;
-        return chanRes.map(item => ({
-          ...item,
-          vod_remarks: `${channel.type_name || chanName} ${item.vod_remarks}`.trim()
+        const html = await req_proxy(u, 'get', this.headers);
+        const { results: cr, nextPage } = await this.parseMessages(html);
+        pc.s[cn] = nextPage === "0" ? "0" : nextPage;
+        return cr.map(it => ({
+          ...it,
+          vod_remarks: `${c.type_name || cn} ${it.vod_remarks}`.trim()
         }));
       } catch (e) {
-        console.error(`处理频道${chanName}失败:`, e.message);
-        pageCache.search[chanName] = "0";
+        pc.s[cn] = "0";
         return [];
       }
     }))).flat();
 
-    searchState.idx = idx + MAX_CONCUR;
-    return results;
+    st.i = i + MAX;
+    return res;
   }
 };

@@ -36,6 +36,7 @@ var rule = {
     play_parse: true,
     lazy: async function () {
         let {input} = this;
+        input = input.split('@@')[0];
         return {parse: 0, url: input + '#.mp4'}
     },
     推荐: async function () {

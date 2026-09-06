@@ -6,6 +6,7 @@
   title: '热播APP',
   author: 'EylinSir',
   '类型': '影视',
+  logo: 'http://v.rbotv.cn/favicon.ico',
   lang: 'ds'
 })
 */

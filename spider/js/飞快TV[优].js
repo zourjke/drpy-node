@@ -6,6 +6,7 @@
   title: '飞快TV',
   author: 'EylinSir',
   '类型': '影视',
+  logo: 'https://feikuai.in/favicon.ico',
   lang: 'ds'
 })
 */
@@ -13,8 +14,9 @@
 var rule = {
     title: '飞快TV',
     author: 'EylinSir',
-    host: 'https://feikuai.tv',
+    host: 'https://feikuai.in',
     homeUrl: '/',
+    logo: 'https://feikuai.in/favicon.ico',
     url: '/vodshow/fyclass--------fypage---.html',
     searchUrl: '/vodsearch/-------------.html?wd=**',
     searchable: 2,

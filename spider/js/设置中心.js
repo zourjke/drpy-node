@@ -132,6 +132,7 @@ var rule = {
         let chatIcon = urljoin(publicUrl, './images/icon_cookie/chat.webp');
         let drpysIcon = urljoin(publicUrl, './images/drpys.png');
         let drpyshIcon = urljoin(publicUrl, './images/drpysh.png');
+        let musicIcon = urljoin(publicUrl, './images/music.png');
         const data = deepCopy(action_data);
         const data1 = {
             vod_id: JSON.stringify({
@@ -208,7 +209,7 @@ var rule = {
                     imageHeight: 200,
                     imageType: 'card_pic_3',
                     keep: true,
-                    button: 4,
+                    button: 3,
                     width: 640,
                     // selectData: '腾讯:=https://v.qq.com/x/cover/m441e3rjq9kwpsc/l0045w5hv1k.html,2:=bb输入默认值bbbbb,3:=c输入默认值ddd,4:=输入默认值,5:=111,6:=22222,7:=HOHO,HELLO,world'
                     selectData: selectData
@@ -433,7 +434,7 @@ var rule = {
                 });
                 break;
             case 'system':
-                d.push(genMultiInput('hide_adult', '设置青少年模式', '把值设置为1将会在全部接口隐藏18+源，其他值不过滤，跟随订阅', images.settings));
+                d.push(genMultiInput('hide_adult', '设置青少年模式', '把值设置为1将会在全部接口隐藏18+源，设置为2将会隐藏18+源及普通源中的18+条目，其他值不过滤，跟随订阅', images.settings));
                 d.push(getInput('get_hide_adult', '查看青少年模式', images.settings));
                 d.push(genMultiInput('thread', '设置播放代理线程数', '默认为1，可自行配置成其他值如:10', images.settings));
                 d.push(getInput('get_thread', '查看播放代理线程数', images.settings));
@@ -1382,7 +1383,7 @@ var rule = {
             'get_xun_username',
             'get_hide_adult',
             'get_thread',
-            'play_local_proxy_type',
+            'get_play_local_proxy_type',
             'get_play_proxy_mode',
             'get_enable_doh',
             'get_enable_system_proxy',

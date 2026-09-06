@@ -5,6 +5,7 @@
   quickSearch: 0,
   title: '夸克网盘社',
   '类型': '影视',
+  logo: 'https://kuakes.com/favicon.ico',
   lang: 'ds'
 })
 */
@@ -13,6 +14,7 @@ const rule = {
     type: '影视',
     title: '夸克网盘社',
     author: 'EylinSir',
+    logo: 'https://kuakes.com/favicon.ico',
     host: 'https://kuakes.com',
     url: '/fyclass/page/fypage',
     searchUrl: '/?s=**',

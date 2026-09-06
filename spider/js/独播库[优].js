@@ -6,6 +6,7 @@
   title: '独播库',
   author: 'EylinSir',
   '类型': '影视',
+  logo:'https://www.dbku.tv/static/favicon.ico',
   lang: 'ds'
 })
 */
@@ -16,6 +17,7 @@ var rule = {
     title: '独播库',
     host: 'https://api.dbokutv.com',
     url: '/home',
+    logo:'https://www.dbku.tv/static/favicon.ico',
     searchUrl: '/vodsearch',
     searchable: 1,
     quickSearch: 0,

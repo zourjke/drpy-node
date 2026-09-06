@@ -4,8 +4,10 @@
   filterable: 1,
   quickSearch: 1,
   title: '永乐视频',
-  '类型': '影视',
-  lang: 'ds'
+  author: 'EylinSir',
+  类型: '影视',
+  logo: 'https://www.59v.net/upload/mxprocms/20240814-1/aaffa0a72bcf154036bf15df4b1571f8.png',
+  lang: 'ds',
 })
 */
 
@@ -14,6 +16,7 @@ var rule = {
     title: '永乐视频',
     host: 'https://www.ylys.tv',
     url: '/',
+    logo:'https://www.59v.net/upload/mxprocms/20240814-1/aaffa0a72bcf154036bf15df4b1571f8.png',
     searchUrl: '/vodsearch/**----------fypage---/',
     searchable: 1,
     quickSearch: 1,

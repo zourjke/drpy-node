@@ -4,6 +4,8 @@
   filterable: 1,
   quickSearch: 0,
   title: '腾云驾雾[官]',
+  '类型': '影视',
+  logo: 'https://v.%71%71.com/favicon.ico',
   lang: 'ds'
 })
 */
@@ -11,25 +13,24 @@
 var rule = {
     title: '腾云驾雾[官]',
     host: 'https://v.%71%71.com',
-    homeUrl: '/x/bu/pagesheet/list?_all=1&append=1&channel=cartoon&listpage=1&offset=0&pagesize=21&iarea=-1&sort=18',
+    logo: 'https://v.%71%71.com/favicon.ico',
+    homeUrl: '/x/bu/pagesheet/list?_all=1&append=1&channel=cartoon&listpage=1&offset=21&pagesize=21&iarea=-1',
     detailUrl: 'https://node.video.%71%71.com/x/api/float_vinfo2?cid=fyid',
     searchUrl: 'https://pbaccess.video.%71%71.com/trpc.videosearch.smartboxServer.HttpRountRecall/Smartbox?query=**&appID=3172&appKey=lGhFIPeD3HsO9xEp&pageNum=(fypage-1)&pageSize=10',
     searchable: 2,
     filterable: 1,
     url: '/x/bu/pagesheet/list?_all=1&append=1&channel=fyclass&listpage=1&offset=((fypage-1)*21)&pagesize=21&iarea=-1',
-    filter_url: 'sort={{fl.sort or 75}}&iyear={{fl.iyear}}&year={{fl.year}}&itype={{fl.type}}&ifeature={{fl.feature}}&iarea={{fl.area}}&itrailer={{fl.itrailer}}&gender={{fl.sex}}',
-    filter: 'H4sIAAAAAAAAA+1Y3U8aWRT/X+ZZEwYEtI9207Rp0r40+9CNDxM7G8laaZCamsYEinyoDYp1sa1I/aJSK4ita3Eo9J+Ze2fmv9g7yOWc22u3xJX0RZ7gd+ee7/M7h3mujE+EQ+O6cuOP58pf+qxyQ5kOR6LKgDKlPWaoQrOrxFhmv2e0yafnj025cCFmJSouzH4E/crcQBen+VoHH/Z1cVJq2kfzHFeVuTH35FxhaFbXIqCRnJ2YjV1JI0mWnUS5I2FQ7Ur2erxDHbT9FeE+wH0Y9wLuxbgKuCDfA7gH4epIF2dfET4M+DDGg4AHMR4APIBxP+B+N2JjA0p0pi+ZCo5cnCnXHpSpP3Ut+jSig07ruEGKSz3nysoc00SSywaVy3v2LochI/TFoZXPdWBIoJNokvqLDgz5JtVTYnA/wU2SL5CF/Q4M0TW/bpFSmnsPKivvzdYWL1MQktqg69xACBXdTNi1Je4OlIaz+YHkmhxH7mdrpFrkOPJoc5W+LnEcXLJeZsFIFXyy9nPkrIFSxPGPRboY43gQ6Z1Hzw9fN98lm+9xeCb0S5kyOvvkfzTf4pHVPJD7ZvGYfFuXmk/oG9XDPqguExV7O4bOAurFTdu+B9kR2989+1FNsyMVEUF8hcby+MyDzC9ba8I9FOLMa9NYwPogwwJdtO9BVTDHRTtRpbKG/M5OkCmwR/sMcVw2RZY/YZlwZsfi1kIa34NysEvfIJsIrtZI82/xltsfqFiuG7vnxp7RIiE9OtuX1naDdM23l0rLuBaJhsNTv5JxtYiuoWwVauSl0XO2SCrJbkjrDl0v0cKhvO4c7lutrNTpJHlqNjj5DV3hOMBLAeJozMNQYCK1IetSq86bD5LRjHlpng8VlIGVonWYkwMSX2KjQVrGnMoamPKDLQfVqDh5gjjcpF6Xtyi6tU02uhMAyS+8Mw0DbUv8+WzZWknJW5rI7CiSjWWSrP93Pt0hd00OlyOHidDko/78GUJbAqaG7+brtP4M6Yvtk8zH3pmh9JlUeNugnlz7ArC3T0Tkw51xERGJFfqTAnVa87T6T8+WeAZ95FNccnxoMAAwWBIcHAEY7FY9DDUbJbO+KK+zybJg1TmjtCvmUXg83J+CEWk5FI1ooUkdxyltkFdxmj/rOU6jozelIJGNpru1FmpAQ+D37dH7PE4qsvPe7btyftuE5ezknPgriXTvPPidy/H7ELlmd6yTHeEO0wPqH/52C2DoHzvZsqtHdvqAZE5lBiYrGbNZoAWDFnmPBS6uQv/VzT1mjDV/KsWPjV5n9113mwZ8r2V+fSuVIJsQNJ+WjRZmAX5/YBpLUiLYrIVJBvxon+yw2SEPGpYDmLX4dUDzgG5npEyKbwPQnrGepDAP2/09NvcvaIIuCAgUAAA=',
+    filter_url: 'sort={{fl.sort or 75}}&iyear={{fl.iyear}}&year={{fl.year}}&itype={{fl.type}}&ifeature={{fl.feature}}&iarea={{fl.area}}&itrailer={{fl.itrailer}}&gender={{fl.sex}}&prefer={{fl.prefer}}&identity={{fl.identity}}&attraction={{fl.attraction}}&story={{fl.story}}',
+    filter: 'H4sIAAAAAAAAE+1YW08bRxT+L/sMktcGG/JIoipVpfal6kMrVFmwUVYlODIbVCtCsjE25iJjE2JoMAQMLuZiY1JKjY3Jn9mZ3f0XHV/G50zGFEuNkxf8tPvNzpz7d874tTLxPKBPaMqjX14rv2kh5ZEyEwgayoAy7X/BUIUm10l1jb3P+qdetT6bbsDZsBUtNmD24htW5gY6OM2U2/iIp4OTfN0+X+C4qsyNN1ZaAvWQ5g+CRHJ9adYOJIkkVnCihfYJg2rnZLfL7W2jzUeEDwM+jPEhwIcw7gHcg3E34G6Mq4AL+rgAdyFcHe3g7BHhI4CPYNwHuA/jYK+K7VXBXvbIPDw+oBizfYmsb7R7ZBv6oMg+0/zGq6AGMq2LGtld6Tm2VuKCRmP8bBC5dmgfcBgiQufPrEy6DUMAnWidVObbMMSblK5IldsJZpJMliwdtWHwrnmzR/KL3HoQWfzTvN3jaQ2HxLfpJlcQXEV3onZ5hZsDqeHsHJN0nePI/GSZlHY5jizaWadbeY6DSdZqEpRUwSbrKE2uayhEHD/dpcthjvuQ3AX0/chDsX6hYn0RmNW/KhMboZf/o1iXz636iVxnyxfk46ZUrEKdqS72Q3kcLdr7YbTmBSlCkTf3QXREumis3VUDbElFxBFJ0XAGr7mQ+gVrQ9iHXJzYMqtLWB5EWKCX5j7ICma4qCfKVFbAn+gJZwps01xDnJiMk7UP+ExYs8MRa2kR74N0sPMfIZoILpVJ/a24q1EfKFkeiKBvRDDrD+qaEeoLFTSc9MDnXySME/6gEQhMf01G9wc1P4putkxWqz1Hl8RjbIc0ftHNPM2eyePX2ZF1m5SYhMSuzBon16HP2G7wkIJ6AOZ5SDCROpF28XXnj2NJacbsNMObFopAatc6S8sOiayw1iMNh05xA1S5Y+pCOSp2Nh92N6lU5KmO7u2T7U6HQedn35vVKpre+PfJgpWKy1Oj2DmQJ2trJFb573g2mmgr1Z/rU5P9uWp4uyf6J91oRvsdyQsfkcRp73me/4sUj6WwWhv/AOzuU1l57isr0d/3cLdzu0BLf/esiWvQQz5EJMOHBr0Agya+wVGAQW/VxVCzljcry/LwFysIWrXqo5kxk4GJQH8SRiQZ3Qj69SkN+2mxSt5EaOa6Zz+NjT2WnES2640ZL1uGogK7n479wP2kIj2/f/qdHN9m+Tm5tBN5I1HItz/+xM8Z9iCqSOasy5ywh8kB8T8/+QZgqB87dmuXzu3FE5K4kvmEpBJmPUuzVbrLa8zbPQuHPx+LM2WshSvJf6yROAfvO7Mn4Ie35s07KQUZ39HMoqy0wGz4dm5WV6RAsM4BvAy0aV/mGBPKtMliAJ0DX7brJ3Q/IUVSvGujrrkZo8DuKr8J6tP6rzMamwJnUI28DGrPcCJDAtzta0xy7PtuJAewSHL6pDZt6GwM7Qi0q6dmrd6jQBqu2QcyuZDDI6aKWalJAbBTq6QQ7Top+A1WxROGzoYpyLTsijV/Tw2j/E2Q43cklYRGDSo5uSwJ3zjhuJ3j5DIk5viMEQiGsOO36E6qR9Gt/5+Ee11zBB+f+xcbF/g7fRUAAA==',
     headers: {
         'User-Agent': 'PC_UA'
     },
     timeout: 5000,
     cate_exclude: '会员|游戏|全部',
-    class_name: '精选&电影&电视剧&综艺&动漫&少儿&纪录片',
-    class_url: 'choice&movie&tv&variety&cartoon&child&doco',
+    class_name: '精选&电影&电视剧&动漫&少儿&综艺&短剧&纪录片',
+    class_url: 'choice&movie&tv&cartoon&child&variety&mini_series&doco',
     limit: 20,
     play_parse: true,
-    // 推荐: '.list_item;img&&alt;img&&src;a&&Text;a&&data-float',
-    // 一级: '.list_item;img&&alt;img&&src;a&&Text;a&&data-float',
     推荐: async function () {
         let {input, pdfa, pdfh, pd} = this;
         let html = await request(input);
@@ -46,18 +47,151 @@ var rule = {
         return setResult(d)
     },
     一级: async function () {
-        let {input, pdfa, pdfh, pd, MY_CATE} = this;
-        let html = await request(input);
+        let {input, pdfa, pdfh, pd, MY_CATE, MY_PAGE, MY_FL} = this;
         let d = [];
-        let data = pdfa(html, '.list_item');
-        data.forEach((it) => {
-            d.push({
-                title: pdfh(it, 'img&&alt'),
-                pic_url: pd(it, 'img&&src'),
-                desc: pdfh(it, 'a&&Text'),
-                url: MY_CATE + '$' + pdfh(it, 'a&&data-float'),
-            })
-        });
+
+        // 短剧特殊处理
+        if (MY_CATE === 'mini_series') {
+            let apiUrl = 'https://pbaccess.video.qq.com/trpc.vector_layout.page_view.PageService/getPage?video_appid=3000010&vversion_platform=2';
+            let fl = MY_FL || {};
+            let filterParts = [];
+            if (fl.prefer) filterParts.push('prefer=' + fl.prefer);
+            if (fl.identity) filterParts.push('identity=' + fl.identity);
+            if (fl.attraction) filterParts.push('attraction=' + fl.attraction);
+            if (fl.story) filterParts.push('story=' + fl.story);
+            let filterValue = filterParts.length > 0 ? filterParts.join('&') : 'sort=75';
+
+            let pageContext = null;
+            let cacheKey = 'mini_series_ctx_' + filterValue;
+
+            if (MY_PAGE > 1) {
+                try {
+                    let cachedContext = typeof storage0 !== 'undefined' ? storage0.getItem(cacheKey) : '';
+                    if (cachedContext) {
+                        let contextObj = JSON.parse(cachedContext);
+                        if (contextObj.page === MY_PAGE - 1 && contextObj.nextContext) {
+                            pageContext = contextObj.nextContext;
+                        } else if (MY_PAGE === 1) {
+                            pageContext = null;
+                        }
+                    }
+                } catch (e) {
+                    log('读取缓存失败: ' + e.message);
+                }
+            } else {
+                try {
+                    if (typeof storage0 !== 'undefined') storage0.setItem(cacheKey, '');
+                } catch (e) {}
+            }
+
+            let requestBody = {
+                "page_params": {
+                    "page_type": "channel",
+                    "page_id": "120188",
+                    "scene": "channel",
+                    "new_mark_label_enabled": "1",
+                    "vl_to_mvl": "1",
+                    "free_watch_trans_info": "{\"ad_frequency_control_time_list\":{}}",
+                    "ad_exp_ids": "100000",
+                    "skip_privacy_types": "0",
+                    "support_click_scan": "1"
+                },
+                "page_bypass_params": {
+                    "params": {
+                        "platform_id": "2",
+                        "caller_id": "3000010",
+                        "data_mode": "default",
+                        "user_mode": "default",
+                        "page_type": "channel",
+                        "page_id": "120188",
+                        "scene": "channel",
+                        "new_mark_label_enabled": "1"
+                    },
+                    "scene": "channel",
+                    "app_version": ""
+                },
+                "page_context": pageContext
+            };
+
+            if (filterParts.length > 0) {
+                requestBody.page_bypass_params.params.filter_value = filterValue;
+            }
+
+            try {
+                let html = await request(apiUrl, {
+                    body: JSON.stringify(requestBody),
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
+                        'Content-Type': 'application/json',
+                        'Origin': 'https://v.qq.com',
+                        'Referer': 'https://v.qq.com/channel/mini_series'
+                    },
+                    method: 'POST'
+                });
+
+                let json = JSON.parse(html);
+                if (json.ret === 0 && json.data && json.data.CardList) {
+                    if (json.data.has_next_page && json.data.page_context) {
+                        try {
+                            if (typeof storage0 !== 'undefined') {
+                                storage0.setItem(cacheKey, JSON.stringify({
+                                    page: MY_PAGE,
+                                    nextContext: json.data.page_context
+                                }));
+                            }
+                        } catch (e) {
+                            log('保存缓存失败: ' + e.message);
+                        }
+                    }
+
+                    json.data.CardList.forEach(function(card) {
+                        if (card.type === 'pc_hot_filter') return;
+                        if (card.type === '_eco_video_staggered' && card.children_list && card.children_list.card_list) {
+                            let cards = card.children_list.card_list.cards || [];
+                            cards.forEach(function(item) {
+                                if (item.type === '_eco_video_staggered_drama_item' && item.params) {
+                                    let params = item.params;
+                                    let cid = params.cid || '';
+                                    let posterInfo = {};
+                                    let markInfo = {};
+                                    try { posterInfo = JSON.parse(params.poster || '{}'); } catch (e) {}
+                                    try { markInfo = JSON.parse(params.mark_label_list || '{}'); } catch (e) {}
+                                    let title = posterInfo.title || '';
+                                    let img = posterInfo.image_url || '';
+                                    let remarks = '';
+                                    if (markInfo.mark_label_list && markInfo.mark_label_list.length > 0) {
+                                        remarks = markInfo.mark_label_list[0].prime_text || '';
+                                    }
+
+                                    if (cid && title) {
+                                        d.push({
+                                            title: title,
+                                            pic_url: img,
+                                            desc: remarks,
+                                            url: 'https://node.video.qq.com/x/api/float_vinfo2?cid=' + cid
+                                        });
+                                    }
+                                }
+                            });
+                        }
+                    });
+                }
+            } catch (e) {
+                log('短剧请求失败: ' + e.message);
+            }
+        } else {
+            // 原有的普通分类处理逻辑
+            let html = await request(input);
+            let data = pdfa(html, '.list_item');
+            data.forEach((it) => {
+                d.push({
+                    title: pdfh(it, 'img&&alt'),
+                    pic_url: pd(it, 'img&&src'),
+                    desc: pdfh(it, 'a&&Text'),
+                    url: MY_CATE + '$' + pdfh(it, 'a&&data-float'),
+                })
+            });
+        }
         return setResult(d)
     },
     二级: async function () {
@@ -137,8 +271,6 @@ var rule = {
                 htmls.forEach((ht) => {
                     if (ht) {
                         eval(ht);
-                        // QZOutputJson = JSON5.parse(ht.split('QZOutputJson=')[1].slice(0, -1));
-                        // log(QZOutputJson)
                         QZOutputJson.results.forEach(function (it1) {
                             it1 = it1.fields;
                             let url = "https://v.qq.com/x/cover/" + cid + "/" + it1.vid + ".html";
@@ -154,20 +286,32 @@ var rule = {
                 });
             }
         }
-        let yg = d.filter(function (it) {
-            return it.type && it.type !== "正片"
+        
+        // 修正分类逻辑：使用关键词判断是否为预告/花絮
+        let ygKeywords = ["预告", "花絮", "片花", "特辑", "幕后", "采访", "制作", "MV", "主题曲"];
+        let yg = d.filter(function(it) {
+            return it.type && ygKeywords.some(keyword => it.type.includes(keyword));
         });
-        let zp = d.filter(function (it) {
-            return !(it.type && it.type !== "正片")
+        let zp = d.filter(function(it) {
+            return !(it.type && ygKeywords.some(keyword => it.type.includes(keyword)));
         });
-        VOD.vod_play_from = yg.length < 1 ? "qq" : "qq$$$qq 预告及花絮";
-        VOD.vod_play_url = yg.length < 1 ? d.map(function (it) {
-            return it.title + "$" + it.url
-        }).join("#") : [zp, yg].map(function (it) {
-            return it.map(function (its) {
-                return its.title + "$" + its.url
-            }).join("#")
-        }).join("$$$");
+
+        // 构造播放线路
+        let playFrom = [];
+        let playUrl = [];
+        
+        if (zp.length > 0) {
+            playFrom.push("qq");
+            playUrl.push(zp.map(it => it.title + "$" + it.url).join("#"));
+        }
+
+        if (yg.length > 0) {
+            playFrom.push("qq 预告及花絮");
+            playUrl.push(yg.map(it => it.title + "$" + it.url).join("#"));
+        }
+
+        VOD.vod_play_from = playFrom.join("$$$");
+        VOD.vod_play_url = playUrl.join("$$$");
         return VOD
     },
 

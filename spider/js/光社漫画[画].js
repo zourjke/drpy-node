@@ -35,10 +35,9 @@ var rule = {
             let img = it.match(/src=["']([^"']+)["']/)[1];
             let descMatch = it.match(/<p class=["']slicardtitlep["'][\s\S]*?>([\s\S]*?)<\/p>/);
             let originalImgUrl = img.startsWith('http') ? img : this.host + img;
-            let jpgImgUrl = 'https://wsrv.nl/?url=' + encodeURIComponent(originalImgUrl) + '&output=jpg';
             return {
                 title: it.match(/<h3[^>]*>([\s\S]*?)<\/h3>/)[1].trim(),
-                img: jpgImgUrl,
+                img: originalImgUrl,
                 url: it.match(/href=["']([^"']+)["']/)[1],
                 desc: descMatch ? descMatch[1].trim() : ''
             };
@@ -53,10 +52,10 @@ var rule = {
         return setResult(this._parse(await request(this.input, { headers: this.headers })));
     },
 
-   二级: async function(ids) {
+    二级: async function(ids) {
         let html = await request(this.input, { headers: this.headers });
         let mid = (html.match(/data-mid=["'](\d+)["']/) || html.match(/mid\s*:\s*["']?(\d+)["']?/))[1];
-        let json = JSON.parse(await request(`https://api-get-v3.mgsearcher.com/api/manga/get?mid=${mid}&mode=all`, { headers: this.headers }));
+        let json = JSON.parse(await request(`https://v2.apikk.top/api/v2/manga/get?mid=${mid}&mode=all`, { headers: this.headers }));
         let chapters = json.data.chapters || json.data.data.chapters;
         return {
             vod_id: ids[0],
@@ -66,7 +65,7 @@ var rule = {
             type_name: "漫画",
             vod_play_from: "光社漫画",
             vod_play_url: chapters.map(ch => {
-                return `${ch.attributes?.title || 'Chapter ' + ch.id}$https://api-get-v3.mgsearcher.com/api/chapter/getinfo?m=${mid}&c=${ch.id}`;
+                return `${ch.attributes?.title || 'Chapter ' + ch.id}$https://v2.apikk.top/api/v2/chapter/getinfo?m=${mid}&c=${ch.id}`;
             }).join("#")
         };
     },
@@ -76,13 +75,24 @@ var rule = {
     },
 
     lazy: async function(flag, id, flags) {
-        let data = JSON.parse(await request(id, { headers: this.headers }));
-        let images = data.data.info.images.images.map(img => 
-            img.url.startsWith('http') ? img.url : "https://f40-1-4.g-mh.online" + img.url
-        );
+        let resp = JSON.parse(await request(id, { headers: this.headers }));
+        let info = resp.data.info;
+        let encrypted = info.images.images;
+        let line = info.images.line || 1;
+        let decoderCode = await request('https://m.g-mh.org/assets/runtime/chapter-decoder.js', { headers: this.headers });
+        globalThis.window = globalThis.window || {};
+        globalThis.window.__cimg = globalThis.window.__cimg || {};
+        globalThis.window.location = { hostname: 'm.g-mh.org' };
+        eval(decoderCode);
+        let images = await globalThis.window.__cimg.r(encrypted);
+        let cdn = line === 2 ? 'https://c-nd2-1.6wm.top' : 'https://c-nd3-1.6wm.top';
+        let urls = images.map(img => {
+            let path = typeof img === 'string' ? img : img.url;
+            return path.startsWith('http') ? path : cdn + path;
+        });
         return {
             parse: 0,
-            url: "pics://" + images.join("&&"),
+            url: "pics://" + urls.join("&&"),
             header: this.headers
         };
     }

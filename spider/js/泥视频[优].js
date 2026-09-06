@@ -6,6 +6,7 @@
   title: '泥视频',
   author: 'eylinsir',
   '类型': '影视',
+  logo: 'https://www.nivod.vip/upload/mxprocms/20240814-1/bec50537ef62b8399a45d39fd7529f5c.png',
   lang: 'ds'
 })
 */
@@ -16,6 +17,7 @@ var rule = {
     类型: '影视',
     desc: '泥视频资源站',
     host: 'https://www.nivod.vip/',
+    logo: 'https://www.nivod.vip/upload/mxprocms/20240814-1/bec50537ef62b8399a45d39fd7529f5c.png',
     headers: { 'User-Agent': 'Mozilla/5.0' },
     编码: 'utf-8',
     timeout: 5000,

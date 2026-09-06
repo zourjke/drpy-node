@@ -2,7 +2,7 @@
 * @File     : spider/js/咕咕番.js
 * @Author   : ChatGPT
 * @Date     : 2026-04-19
-* @Comments : 咕咕番 - 在线日漫
+* @Comments : 咕咕番 - 在线日漫 (API失效,改用HTML解析首页静态卡片)
 @header({
   searchable: 2,
   filterable: 0,
@@ -17,7 +17,7 @@ var rule = {
     类型: '影视',
     title: '咕咕番',
     host: 'https://www.gugu3.com',
-    homeUrl: '/index.php/vod/show/id/6.html',
+    homeUrl: '/',
     url: '/index.php/vod/show/id/fyclass/page/fypage.html',
     searchUrl: '/index.php/vod/search/page/fypage/wd/**.html',
 
@@ -37,64 +37,56 @@ var rule = {
     limit: 6,
     double: false,
     推荐: async function () {
-        let { HOST } = this;
-        let data = {
-            type: '6',
-            class: '',
-            area: '',
-            year: '',
-            lang: '',
-            version: '',
-            state: '',
-            letter: '',
-            time: '',
-            level: '0',
-            weekday: '',
-            by: 'time',
-            page: '1'
-        };
-        let html = await post(HOST + '/index.php/ds_api/vod', {
-            headers: rule.headers,
-            data: data
+        let { HOST, pdfa, pdfh, pd } = this;
+        let html = await request(HOST + '/');
+        let d = [];
+        let data = pdfa(html, '.public-list-box');
+        data.slice(0, 12).forEach(it => {
+            d.push({
+                title: pdfh(it, '.public-list-exp&&title'),
+                pic_url: pd(it, 'img&&data-src'),
+                desc: pdfh(it, '.public-list-subtitle&&Text'),
+                url: pd(it, '.public-list-exp&&href')
+            });
         });
-        let json = JSON.parse(html);
-        let list = (json.list || []).slice(0, 12);
-        return list.map(it => ({
-            vod_name: it.vod_name,
-            vod_pic: it.vod_pic,
-            vod_remarks: it.vod_remarks || it.vod_douban_score || '',
-            vod_id: it.url || ('/index.php/vod/detail/id/' + it.vod_id + '.html')
-        }));
+        return d;
     },
     一级: async function () {
-        let { HOST, MY_CATE, MY_PAGE } = this;
-        let data = {
-            type: MY_CATE || '6',
-            class: '',
-            area: '',
-            year: '',
-            lang: '',
-            version: '',
-            state: '',
-            letter: '',
-            time: '',
-            level: '0',
-            weekday: '',
-            by: 'time',
-            page: MY_PAGE || '1'
-        };
-        let html = await post(HOST + '/index.php/ds_api/vod', {
-            headers: rule.headers,
-            data: data
+        let { HOST, MY_CATE, MY_PAGE, pdfa, pdfh, pd } = this;
+        let html = await request(HOST + '/');
+        let d = [];
+        // 分类与首页section标题映射
+        let sectionMap = { '6': '番剧热度', '21': '剧场热度', '23': '特摄热度' };
+        let sectionTitle = sectionMap[MY_CATE];
+        let cards = [];
+        if (sectionTitle) {
+            // 定位section标题
+            let titlePos = html.indexOf('>' + sectionTitle + '<');
+            if (titlePos > 0) {
+                // 向上找 box-width section 起始
+                let sectionStart = html.lastIndexOf('<div class="box-width', titlePos);
+                // 向下找下一个 box-width section
+                let nextSection = html.indexOf('<div class="box-width', titlePos + sectionTitle.length);
+                if (nextSection === -1) nextSection = html.length;
+                let sectionHtml = html.substring(sectionStart, nextSection);
+                cards = pdfa(sectionHtml, '.public-list-box');
+            }
+        }
+        // 兜底:用所有卡片
+        if (cards.length === 0) {
+            cards = pdfa(html, '.public-list-box');
+        }
+        let page = parseInt(MY_PAGE) || 1;
+        let start = (page - 1) * 20;
+        cards.slice(start, start + 20).forEach(it => {
+            d.push({
+                title: pdfh(it, '.public-list-exp&&title'),
+                pic_url: pd(it, 'img&&data-src'),
+                desc: pdfh(it, '.public-list-subtitle&&Text'),
+                url: pd(it, '.public-list-exp&&href')
+            });
         });
-        let json = JSON.parse(html);
-        let list = json.list || [];
-        return list.map(it => ({
-            vod_name: it.vod_name,
-            vod_pic: it.vod_pic,
-            vod_remarks: it.vod_remarks || it.vod_douban_score || '',
-            vod_id: it.url || ('/index.php/vod/detail/id/' + it.vod_id + '.html')
-        }));
+        return d;
     },
     二级: {
         title: '.slide-info-title&&Text;.detail-info .partition:eq(2)&&Text',

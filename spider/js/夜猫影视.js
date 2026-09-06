@@ -31,16 +31,34 @@ var rule = {
         'Content-Type': 'application/json'
     },
     推荐: async function () {
-        let url = this.host + '/api/v1/video/modules';
-        let html = await request(url, { headers: this.headers });
-        let json = JSON.parse(html);
-        let modules = (json && json.data) || [];
         let d = [];
-        let seen = {};
-        modules.forEach(mod => {
-            (mod.list || []).forEach(vod => {
-                if (seen[vod.vod_id]) return;
-                seen[vod.vod_id] = 1;
+        try {
+            let url = this.host + '/api/v1/content/slides';
+            let html = await request(url, { headers: this.headers });
+            let json = JSON.parse(html);
+            let slides = (json && json.data) || [];
+            slides.forEach(s => {
+                if (!s.vod_id) return;
+                d.push({
+                    title: s.title || '',
+                    pic_url: s.image_url || '',
+                    desc: '',
+                    url: String(s.vod_id)
+                });
+            });
+        } catch (e) { log('夜猫推荐异常:' + e.message); }
+        return setResult(d);
+    },
+    一级: async function (tid, pg) {
+        let page = pg || 1;
+        let d = [];
+        try {
+            let url = this.host + '/api/v1/video/list?page=' + page + '&page_size=18&type_id=' + tid + '&order=time';
+            let html = await request(url, { headers: this.headers });
+            let json = JSON.parse(html);
+            let data = (json && json.data) || {};
+            let list = data.list || [];
+            list.forEach(vod => {
                 d.push({
                     title: vod.vod_name || '',
                     pic_url: vod.vod_pic || '',
@@ -48,25 +66,24 @@ var rule = {
                     url: String(vod.vod_id)
                 });
             });
-        });
-        return setResult(d);
-    },
-    一级: async function (tid, pg) {
-        let page = pg || 1;
-        let url = this.host + '/api/v1/video/list?page=' + page + '&page_size=18&type_id=' + tid + '&order=time';
-        let html = await request(url, { headers: this.headers });
-        let json = JSON.parse(html);
-        let data = (json && json.data) || {};
-        let list = data.list || [];
-        let d = [];
-        list.forEach(vod => {
-            d.push({
-                title: vod.vod_name || '',
-                pic_url: vod.vod_pic || '',
-                desc: vod.vod_remarks || vod.vod_class || '',
-                url: String(vod.vod_id)
-            });
-        });
+        } catch (e) { log('夜猫一级list异常:' + e.message); }
+        if (d.length === 0) {
+            try {
+                let sUrl = this.host + '/api/v1/content/slides';
+                let sHtml = await request(sUrl, { headers: this.headers });
+                let sJson = JSON.parse(sHtml);
+                let slides = (sJson && sJson.data) || [];
+                slides.forEach(s => {
+                    if (!s.vod_id) return;
+                    d.push({
+                        title: s.title || '',
+                        pic_url: s.image_url || '',
+                        desc: '',
+                        url: String(s.vod_id)
+                    });
+                });
+            } catch (e) { log('夜猫一级fallback异常:' + e.message); }
+        }
         return setResult(d);
     },
     二级: async function (ids) {

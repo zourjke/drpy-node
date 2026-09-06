@@ -19,6 +19,7 @@
   filterable: 1,
   quickSearch: 0,
   title: '哔哩影视[官]',
+  logo: 'https://img01.sogoucdn.com/v2/thumb/retype_exclude_gif/ext/auto/q/79/crop/xy/ai/w/128/h/128/resize/w/128?url=http%3A%2F%2Fpp.myapp.com%2Fma_icon%2F0%2Ficon_73622_1691575154%2F256&appid=201003&sign=c1faea8b5ba7bc3357e154fd1c83df32',
   lang: 'ds'
   })
  */var rule = {

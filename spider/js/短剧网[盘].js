@@ -6,6 +6,7 @@
   title: '短剧网',
   author: 'EylinSir',
   '类型': '影视',
+  logo: 'https://sm3.cc/zb_users/upload/2025/01/20250114180829173684930951201.png',
   lang: 'ds'
 })
 */
@@ -13,6 +14,7 @@
 var rule = {
     类型: '影视',
     author: 'EylinSir',
+    logo: 'https://sm3.cc/zb_users/upload/2025/01/20250114180829173684930951201.png',
     title: '短剧网',
     host: 'https://sm3.cc',
     url: '/?cate=fyclass&page=fypage',

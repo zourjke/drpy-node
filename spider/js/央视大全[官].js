@@ -4,6 +4,7 @@
   filterable: 1,
   quickSearch: 0,
   title: '央视大全',
+  logo: 'https://p2.img.cctvpic.com/photoAlbum/page/performance/img/2019/8/28/1566979406603_367.png',
   lang: 'ds',
   isProxyPath: true,
   more: {

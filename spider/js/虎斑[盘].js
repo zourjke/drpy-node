@@ -12,7 +12,7 @@ var rule = {
     title: '虎斑[盘]',
     // host: 'https://wp.huban.xyz',
     // host: 'http://45.207.212.215:12121',
-    host: 'http://103.45.162.207:20720',
+    host: 'https://wp.huban.xyz',
     url: '/index.php/vod/show/id/fyfilter.html',
     filter_url: '{{fl.cateId}}{{fl.area}}{{fl.by}}{{fl.class}}{{fl.lang}}{{fl.letter}}/page/fypage{{fl.year}}',
     searchUrl: '/index.php/vod/search/page/fypage/wd/**.html',

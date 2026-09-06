@@ -74,6 +74,7 @@ var rule = {
             log('当前程序支持批量请求[batchFetch],搜索限制已设置为16');
         }
         let _url = rule.params;
+        log(`_url:${_url}`);
         if (_url && typeof (_url) === 'string' && /^(http|file)/.test(_url)) {
             let html = await request(_url);
             let json = JSON.parse(html);
@@ -147,6 +148,7 @@ var rule = {
                 arr.forEach(it => {
                     let vname = it.split(/[,，]/)[0];
                     let vtab = it.match(/#(.*?)#/)[0];
+                    log(`_pic:${_pic},rule.def_pic:${rule.def_pic}`);
                     VODS.push({
                         vod_name: vname,
                         vod_id: _get_url + '$' + vname,
