@@ -1,4 +1,5 @@
-/**
+/**import {log, logWarn} from '../../utils/log.js';
+
  * 数据库查询控制器
  * 提供安全的只读 SQL 查询功能
  */
@@ -33,18 +34,17 @@ async function getDatabaseClass() {
                 this.db.close();
             }
         };
-        console.log('[DB] Using built-in node:sqlite for admin db');
+        log('[DB] Using built-in node:sqlite for admin db');
         return SQLiteDatabase;
     } catch (e) {
         // Ignored
     }
-    console.log('[DB] Using built-in node:sqlite for admin db');
 
     // 2. 尝试使用原有的 node-sqlite3-wasm
     try {
         const sqlite3pkg = await import('node-sqlite3-wasm');
         SQLiteDatabase = sqlite3pkg.default ? sqlite3pkg.default.Database : sqlite3pkg.Database;
-        console.log('[DB] Using node-sqlite3-wasm for admin db');
+        log('[DB] Using node-sqlite3-wasm for admin db');
         return SQLiteDatabase;
     } catch (e) {
         // Ignored
@@ -57,7 +57,7 @@ async function getDatabaseClass() {
         const testResult = spawnSync(phpExecutable, ['-r', 'if(extension_loaded("sqlite3")) echo "OK";'], { encoding: 'utf-8' });
         
         if (testResult.stdout && testResult.stdout.trim() === 'OK') {
-            console.log('[DB] Using PHP SQLite3 for admin db');
+            log('[DB] Using PHP SQLite3 for admin db');
             SQLiteDatabase = class {
                 constructor(dbPath) {
                     this.dbPath = dbPath;
@@ -149,20 +149,20 @@ async function getDatabaseClass() {
     }
 
     // 4. 第四级（终极回退）：伪装接口 Mock (避免报错，返回空数据)
-    console.warn('[DB] No valid SQLite engine found (node:sqlite, wasm, PHP). Using Mock SQLite Engine.');
+    logWarn('[DB] No valid SQLite engine found (node:sqlite, wasm, PHP). Using Mock SQLite Engine.');
     SQLiteDatabase = class {
         constructor(dbPath) {
             this.dbPath = dbPath;
-            console.warn(`[DB Mock] Connected to mock database at ${dbPath}`);
+            logWarn(`[DB Mock] Connected to mock database at ${dbPath}`);
         }
 
         all(sql, params = []) {
-            console.warn(`[DB Mock] Ignored SQL execution: ${sql}`);
+            logWarn(`[DB Mock] Ignored SQL execution: ${sql}`);
             return []; // 始终返回空数组
         }
 
         close() {
-            console.warn(`[DB Mock] Connection closed.`);
+            logWarn(`[DB Mock] Connection closed.`);
         }
     };
 
