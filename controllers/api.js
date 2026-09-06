@@ -16,12 +16,16 @@
  * @version 1.0.0
  */
 
+import {log, logError} from '../utils/log.js';
 import path from 'path';
-import {existsSync} from 'fs';
+import {existsSync, readFileSync, statSync} from 'fs';
 import {base64Decode} from '../libs_drpy/crypto-util.js';
 import {ENV} from "../utils/env.js";
 import {validatePwd} from "../utils/api_validate.js";
 import {startJsonWatcher, getApiEngine} from "../utils/api_helper.js";
+import {withTimeout as withTimeoutBase} from '../utils/with-timeout.js';
+import {createRuleEnvContext} from '../utils/rule-env.js';
+import {proxyStreamMedia} from './mediaProxy.js';
 import * as drpyS from '../libs/drpyS.js';
 import hipy from '../libs/hipy.js';
 import php from '../libs/php.js';
@@ -39,6 +43,68 @@ const ENGINES = {
     xbpq,
     catvod,
 };
+
+// ===== 内容关键词过滤 =====
+let _filterRegex = null;
+let _filterMtime = 0;
+
+function loadFilterRegex() {
+    const filterPath = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', 'config', 'filter_keywords.json');
+    try {
+        const stat = statSync(filterPath);
+        if (_filterRegex && stat.mtimeMs === _filterMtime) return _filterRegex;
+        const raw = JSON.parse(readFileSync(filterPath, 'utf-8'));
+        // 兼容两种格式：旧版纯数组 / 新版 {encoded: base64字符串}
+        const keywords = Array.isArray(raw)
+            ? raw
+            : JSON.parse(Buffer.from(raw.encoded, 'base64').toString('utf-8'));
+        // 转义正则特殊字符后拼接为单个正则，一次匹配替代逐词遍历
+        const escaped = keywords.map(kw => kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+        _filterRegex = new RegExp(escaped.join('|'), 'i');
+        _filterMtime = stat.mtimeMs;
+        return _filterRegex;
+    } catch {
+        return _filterRegex;
+    }
+}
+
+function containsKeyword(text) {
+    if (!text) return false;
+    const re = loadFilterRegex();
+    return re ? re.test(String(text)) : false;
+}
+
+/** 过滤 vod 列表条目和分类：命中关键词的移除（仅 hide_adult===2 时生效） */
+function filterVodList(result) {
+    if (ENV.get('hide_adult') !== '2') return result;
+    if (!result || typeof result !== 'object') return result;
+
+    // 过滤视频列表
+    if (Array.isArray(result.list)) {
+        const before = result.list.length;
+        result.list = result.list.filter(item =>
+            !containsKeyword(item.vod_name)
+            && !containsKeyword(item.vod_remarks)
+            && !containsKeyword(item.vod_content)
+        );
+        const removed = before - result.list.length;
+        if (removed > 0) {
+            log(`[ContentFilter] 过滤 ${removed} 条命中关键词的视频条目`);
+        }
+    }
+
+    // 过滤分类（class 数组的 type_name）
+    if (Array.isArray(result.class)) {
+        const before = result.class.length;
+        result.class = result.class.filter(item => !containsKeyword(item.type_name));
+        const removed = before - result.class.length;
+        if (removed > 0) {
+            log(`[ContentFilter] 过滤 ${removed} 个命中关键词的分类`);
+        }
+    }
+
+    return result;
+}
 
 /**
  * 创建带超时的Promise包装函数
@@ -64,14 +130,9 @@ function withTimeout(promise, timeoutMs = null, operation = 'API操作', invokeM
 
     const actualTimeout = timeoutMs || defaultTimeout;
 
-    return Promise.race([
-        promise,
-        new Promise((_, reject) => {
-            setTimeout(() => {
-                reject(new Error(`${operation}超时 (${actualTimeout}ms)`));
-            }, actualTimeout);
-        })
-    ]);
+    // L10：改用公共超时包装器——原裸 Promise.race 的输家 setTimeout 永不清理，
+    // 高并发搜索/翻页时每个请求遗留一个 20~60s 的 pending timer。
+    return withTimeoutBase(promise, actualTimeout, operation);
 }
 
 /**
@@ -105,6 +166,37 @@ export default (fastify, options, done) => {
         preHandler: validatePwd, // 密码验证中间件
         schema: {
             consumes: ['application/json', 'application/x-www-form-urlencoded'], // 声明支持的内容类型
+            tags: ['协议接口'],
+            summary: '模块数据接口（T4）',
+            description: '按传参进入不同逻辑：play 播放 / ac+t 分类 / ac+ids 详情 / ac+action 动作 / wd 搜索 / refresh 刷新 / 缺省返回 home+homeVod。ext 必须是 Base64 编码的 JSON。',
+            security: [], // pwd 参数鉴权，不走全局 Basic Auth
+            params: {type: 'object', properties: {module: {type: 'string', description: '源文件名称，如 腾云驾雾[官]'}}, required: ['module']},
+            // 兼容性注意（壳子协议回归教训）：querystring 值一律声明为 string——
+            // v1 无 schema 时全按原始字符串传递；此前把 quick/filter/pg 声明为 integer，
+            // 壳子传 filter=true / pg= 空值会被 ajv 打 400 导致大量壳子加载失败。
+            // additionalProperties: string 显式容纳壳子附加的任意参数（token/type/h 等）。
+            querystring: {
+                type: 'object',
+                additionalProperties: {type: 'string'},
+                properties: {
+                    pwd: {type: 'string', description: '访问密码（服务端设置了 API 密码时必填）'},
+                    play: {type: 'string', description: '播放链接标识'},
+                    flag: {type: 'string', description: '播放标志（配合 play）'},
+                    ac: {type: 'string', description: '动作类型：list 分类 / detail 详情 / action 动作'},
+                    t: {type: 'string', description: '分类 ID（配合 ac=list）'},
+                    ids: {type: 'string', description: '详情 ID，逗号分隔（配合 ac=detail）'},
+                    action: {type: 'string', description: '执行动作名（配合 ac=action）'},
+                    value: {type: 'string', description: '执行动作值'},
+                    wd: {type: 'string', description: '搜索关键字'},
+                    quick: {type: 'string', description: '搜索模式：0 普通 / 1 快速（部分壳子传 true，保持原始字符串）'},
+                    refresh: {type: 'string', description: '传任意值强制刷新初始化'},
+                    filter: {type: 'string', description: '是否开启筛选（部分壳子传 true/false，保持原始字符串）'},
+                    pg: {type: 'string', description: '页码（壳子可能传空值，服务端 Number()||1 兜底）'},
+                    ext: {type: 'string', description: 'Base64 编码的 JSON 筛选参数'},
+                    extend: {type: 'string', description: '扩展参数（与 /config 中 sites.ext 对应）'},
+                    do: {type: 'string', description: '自定义源适配器'},
+                },
+            },
         },
         handler: async (request, reply) => {
             const moduleName = request.params.module;
@@ -119,7 +211,7 @@ export default (fastify, options, done) => {
             // 检查模块文件是否存在
             if (!existsSync(modulePath)) {
                 const error_msg=`Module ${moduleName} not found`;
-                console.error(error_msg);
+                logError(error_msg);
                 fastify.log.error(error_msg);
                 reply.status(404).send({error: error_msg});
                 return;
@@ -128,52 +220,8 @@ export default (fastify, options, done) => {
             // 获取模块扩展参数
             const moduleExt = query.extend || '';
 
-            // 构建请求相关的URL信息
-            const protocol = request.headers['x-forwarded-proto'] || (request.socket.encrypted ? 'https' : 'http');
-            const hostname = request.hostname;
-            const wsName = hostname.replace(`:${options.PORT}`, `:${options.WsPORT}`);
-            const requestHost = `${protocol}://${hostname}`;
-            const publicUrl = `${protocol}://${hostname}/public/`;
-            const jsonUrl = `${protocol}://${hostname}/json/`;
-            const httpUrl = `${protocol}://${hostname}/http`;
-            const imageApi = `${protocol}://${hostname}/image`;
-            const mediaProxyUrl = `${protocol}://${hostname}/mediaProxy`;
-            const webdavProxyUrl = `${protocol}://${hostname}/webdav/`;
-            const ftpProxyUrl = `${protocol}://${hostname}/ftp/`;
-            const hostUrl = `${hostname.split(':')[0]}`;
-            // const fServer = fastify.server;
-            const fServer = options.wsApp.server;
-
-            /**
-             * 构建环境对象
-             * 为规则执行提供必要的环境信息
-             *
-             * @param {string} moduleName - 模块名称
-             * @returns {Object} 环境对象，包含各种URL和配置
-             */
-            function getEnv(moduleName) {
-                const proxyUrl = `${protocol}://${hostname}/proxy/${moduleName}/?do=${query.do || 'ds'}&extend=${encodeURIComponent(moduleExt)}`;
-                const getProxyUrl = function () {
-                    return proxyUrl
-                };
-                return {
-                    requestHost,
-                    proxyUrl,
-                    publicUrl,
-                    jsonUrl,
-                    httpUrl,
-                    imageApi,
-                    mediaProxyUrl,
-                    webdavProxyUrl,
-                    ftpProxyUrl,
-                    hostUrl,
-                    hostname,
-                    wsName,
-                    fServer,
-                    getProxyUrl,
-                    ext: moduleExt
-                }
-            }
+            // P2：env 构建样板收敛至 utils/rule-env.js（原为三处逐字重复）
+            const {getEnv} = createRuleEnvContext(request, options, query, moduleExt);
 
             const env = getEnv(moduleName);
 
@@ -262,6 +310,12 @@ export default (fastify, options, done) => {
             // 获取页码参数
             const pg = Number(query.pg) || 1;
 
+            /** 统一响应出口：自动过滤 list 中的敏感条目 */
+            function sendFiltered(result) {
+                filterVodList(result);
+                return reply.send(result);
+            }
+
             try {
                 // 根据 query 参数决定执行逻辑
 
@@ -272,7 +326,7 @@ export default (fastify, options, done) => {
                         null,
                         `播放接口[${moduleName}]`
                     );
-                    return reply.send(result);
+                    return sendFiltered(result);
                 }
 
                 // 处理分类逻辑
@@ -294,7 +348,7 @@ export default (fastify, options, done) => {
                         null,
                         `分类接口[${moduleName}]`
                     );
-                    return reply.send(result);
+                    return sendFiltered(result);
                 }
 
                 // 处理详情逻辑
@@ -308,7 +362,7 @@ export default (fastify, options, done) => {
                         null,
                         `详情接口[${moduleName}]`
                     );
-                    return reply.send(result);
+                    return sendFiltered(result);
                 }
 
                 // 处理动作逻辑
@@ -319,7 +373,7 @@ export default (fastify, options, done) => {
                         `动作接口[${moduleName}]`,
                         'action'
                     );
-                    return reply.send(result);
+                    return sendFiltered(result);
                 }
 
                 // 处理搜索逻辑
@@ -330,7 +384,7 @@ export default (fastify, options, done) => {
                         null,
                         `搜索接口[${moduleName}]`
                     );
-                    return reply.send(result);
+                    return sendFiltered(result);
                 }
 
                 // 处理强制刷新初始化逻辑
@@ -341,7 +395,7 @@ export default (fastify, options, done) => {
                         `初始化接口[${moduleName}]`
                     );
                     const {context, ...responseObject} = refreshedObject;
-                    return reply.send(responseObject);
+                    return sendFiltered(responseObject);
                 }
 
                 // 默认逻辑，返回 home + homeVod 接口
@@ -375,12 +429,12 @@ export default (fastify, options, done) => {
                     Object.assign(result, {list: resultHomeVod})
                 }
 
-                reply.send(result);
+                sendFiltered(result);
 
             } catch (error) {
                 // 错误处理和日志记录
                 const error_msg=`Failed to process module ${moduleName}: ${error.message}`;
-                console.error(error_msg);
+                logError(error_msg);
                 fastify.log.error(error_msg);
                 reply.status(500).send({error: error_msg});
             }
@@ -394,7 +448,22 @@ export default (fastify, options, done) => {
      * 路径格式：/proxy/:module/*
      * 支持Range请求头，用于视频流的断点续传
      */
-    fastify.get('/proxy/:module/*', async (request, reply) => {
+    fastify.get('/proxy/:module/*', {
+        schema: {
+            tags: ['协议接口'],
+            summary: '模块代理接口',
+            description: '转发/代理模块相关资源，支持 Range 请求与流媒体；可能返回二进制、JSON/文本，或 302 重定向到 /mediaProxy 流代理。',
+            security: [],
+            params: {
+                type: 'object',
+                properties: {
+                    module: {type: 'string', description: '模块名称'},
+                    '*': {type: 'string', description: '代理目标路径（可含斜杠）'},
+                },
+                required: ['module', '*'],
+            },
+        },
+    }, async (request, reply) => {
         const moduleName = request.params.module;
         const query = request.query; // 获取 query 参数
 
@@ -404,7 +473,7 @@ export default (fastify, options, done) => {
         // 检查模块文件是否存在
         if (!existsSync(modulePath)) {
             const error_msg=`Module ${moduleName} not found`;
-            console.error(error_msg);
+            logError(error_msg);
             fastify.log.error(error_msg);
             reply.status(404).send({error: error_msg});
             return;
@@ -416,55 +485,20 @@ export default (fastify, options, done) => {
         const rangeHeader = request.headers.range; // 获取客户端的 Range 请求头
         const moduleExt = query.extend || '';
 
-        // 构建请求相关的URL信息
-        const protocol = request.headers['x-forwarded-proto'] || (request.socket.encrypted ? 'https' : 'http');
-        const hostname = request.hostname;
-        const wsName = hostname.replace(`:${options.PORT}`, `:${options.WsPORT}`);
-        const requestHost = `${protocol}://${hostname}`;
-        const publicUrl = `${protocol}://${hostname}/public/`;
-        const jsonUrl = `${protocol}://${hostname}/json/`;
-        const httpUrl = `${protocol}://${hostname}/http`;
-        const imageApi = `${protocol}://${hostname}/image`;
-        const mediaProxyUrl = `${protocol}://${hostname}/mediaProxy`;
-        const webdavProxyUrl = `${protocol}://${hostname}/webdav/`;
-        const ftpProxyUrl = `${protocol}://${hostname}/ftp/`;
-        const hostUrl = `${hostname.split(':')[0]}`;
-        // const fServer = fastify.server;
-        const fServer = options.wsApp.server;
+        // P2：env 构建样板收敛至 utils/rule-env.js（proxyPath 为本路由附加字段）
+        const {getEnv} = createRuleEnvContext(request, options, query, moduleExt);
 
-        /**
-         * 构建代理环境对象
-         * 为代理操作提供必要的环境信息
-         *
-         * @param {string} moduleName - 模块名称
-         * @returns {Object} 环境对象，包含代理路径和各种URL
-         */
-        function getEnv(moduleName) {
-            const proxyUrl = `${protocol}://${hostname}/proxy/${moduleName}/?do=${query.do || 'ds'}&extend=${encodeURIComponent(moduleExt)}`;
-            const getProxyUrl = function () {
-                return proxyUrl
-            };
-            return {
-                requestHost,
-                proxyUrl,
-                proxyPath, // 代理路径
-                publicUrl,
-                jsonUrl,
-                httpUrl,
-                imageApi,
-                mediaProxyUrl,
-                webdavProxyUrl,
-                ftpProxyUrl,
-                hostUrl,
-                hostname,
-                wsName,
-                fServer,
-                getProxyUrl,
-                ext: moduleExt
-            }
+        function buildEnv(moduleName) {
+            return getEnv(moduleName, {extra: {proxyPath}});
         }
 
-        const env = getEnv(moduleName);
+        const env = buildEnv(moduleName);
+
+        // 能力注入：`__` 前缀为框架保留字段（见 docs/t4api.md「代理接口与 toBytes 协议」）
+        // __range      客户端 Range 请求头，源据此回 206 分段
+        // __mediaProxy 服务端流式代理基址，源用它拼 toBytes=2/3 的流式出口
+        query.__range = rangeHeader || '';
+        query.__mediaProxy = env.mediaProxyUrl;
 
         try {
             // 调用模块的代理方法
@@ -491,7 +525,7 @@ export default (fastify, options, done) => {
                 } catch (e) {
                     const error_msg = `Local Proxy toBytes error: ${e}`;
                     fastify.log.error(error_msg);
-                    console.error(error_msg);
+                    logError(error_msg);
                 }
             }
             // 流代理 - 重定向到媒体代理服务
@@ -506,6 +540,11 @@ export default (fastify, options, done) => {
 
                 // 执行重定向
                 return reply.redirect(redirectUrl);
+            }
+            // 流代理 - 服务端内联流式 pipe（不 302：规避播放器跳转丢 header/不支持 302 的客户端，
+            // Range/206/空闲断开语义与 /mediaProxy?stream=1 完全一致）
+            else if (toBytes === 3 && content.startsWith('http')) {
+                return await proxyStreamMedia(content, headers || {}, request, reply, 0);
             }
 
             // 根据媒体类型来决定如何设置字符编码
@@ -538,7 +577,7 @@ export default (fastify, options, done) => {
         } catch (error) {
             const error_msg = `Error proxy module ${moduleName}:${error.message}`;
             fastify.log.error(error_msg);
-            console.error(error_msg);
+            logError(error_msg);
             reply.status(500).send({error: error_msg});
         }
     });
@@ -550,7 +589,24 @@ export default (fastify, options, done) => {
      * 路径格式：/parse/:jx
      * 支持多种解析器，返回解析后的播放链接
      */
-    fastify.get('/parse/:jx', async (request, reply) => {
+    fastify.get('/parse/:jx', {
+        schema: {
+            tags: ['协议接口'],
+            summary: '解析接口',
+            description: '调用解析脚本解析传入链接，code 200 成功 / 404 失败，cost 为耗时毫秒。',
+            security: [],
+            params: {type: 'object', properties: {jx: {type: 'string', description: '解析脚本名称（jx 目录下 .js 文件名）'}}, required: ['jx']},
+            // 兼容性：不设 required——壳子可能空 url 探测；缺失/非法 url 由 handler 返回协议 JSON 错误（与 v1 一致），而非 400
+            querystring: {
+                type: 'object',
+                additionalProperties: {type: 'string'},
+                properties: {
+                    url: {type: 'string', description: '待解析链接'},
+                    extend: {type: 'string', description: '扩展参数'},
+                },
+            },
+        },
+    }, async (request, reply) => {
         let t1 = (new Date()).getTime(); // 记录开始时间
         const jxName = request.params.jx;
         const query = request.query; // 获取 query 参数
@@ -562,61 +618,21 @@ export default (fastify, options, done) => {
         if (!existsSync(jxPath)) {
             const error_msg = `解析 ${jxName} not found`;
             fastify.log.error(error_msg);
-            console.error(error_msg);
+            logError(error_msg);
             return reply.status(404).send({error: error_msg});
         }
 
         const moduleExt = query.extend || '';
 
-        // 构建请求相关的URL信息
-        const protocol = request.headers['x-forwarded-proto'] || (request.socket.encrypted ? 'https' : 'http');
-        const hostname = request.hostname;
-        const wsName = hostname.replace(`:${options.PORT}`, `:${options.WsPORT}`);
-        const requestHost = `${protocol}://${hostname}`;
-        const publicUrl = `${protocol}://${hostname}/public/`;
-        const jsonUrl = `${protocol}://${hostname}/json/`;
-        const httpUrl = `${protocol}://${hostname}/http`;
-        const imageApi = `${protocol}://${hostname}/image`;
-        const mediaProxyUrl = `${protocol}://${hostname}/mediaProxy`;
-        const webdavProxyUrl = `${protocol}://${hostname}/webdav/`;
-        const ftpProxyUrl = `${protocol}://${hostname}/ftp/`;
-        const hostUrl = `${hostname.split(':')[0]}`;
-        // const fServer = fastify.server;
-        const fServer = options.wsApp.server;
+        // P2：env 构建样板收敛至 utils/rule-env.js；
+        // parse 路由需将 /parse/ 重写为 /proxy/，因此覆写 proxyUrl 模板
+        const {protocol, hostname, getEnv} = createRuleEnvContext(request, options, query, moduleExt);
 
-        /**
-         * 构建解析环境对象
-         * 为解析操作提供必要的环境信息
-         *
-         * @param {string} moduleName - 模块名称（这里为空字符串）
-         * @returns {Object} 环境对象，包含各种URL和配置
-         */
-        function getEnv(moduleName) {
-            // 构建代理URL，将parse路径转换为proxy路径
-            const proxyUrl = `${protocol}://${hostname}${request.url}`.split('?')[0].replace('/parse/', '/proxy/') + `/?do=${query.do || "ds"}&extend=${encodeURIComponent(moduleExt)}`;
-            const getProxyUrl = function () {
-                return proxyUrl
-            };
-            return {
-                requestHost,
-                proxyUrl,
-                publicUrl,
-                jsonUrl,
-                httpUrl,
-                imageApi,
-                mediaProxyUrl,
-                webdavProxyUrl,
-                ftpProxyUrl,
-                hostUrl,
-                hostname,
-                wsName,
-                getProxyUrl,
-                fServer,
-                ext: moduleExt
-            }
-        }
+        const jxProxyUrlBase = `${protocol}://${hostname}${request.url}`.split('?')[0].replace('/parse/', '/proxy/');
 
-        const env = getEnv('');
+        const env = getEnv('', {
+            proxyUrl: jxProxyUrlBase + `/?do=${query.do || "ds"}&extend=${encodeURIComponent(moduleExt)}`,
+        });
 
         try {
             // 调用drpyS引擎的解析方法
@@ -648,7 +664,7 @@ export default (fastify, options, done) => {
                 backResp.cost = t2 - t1;
 
                 let backRespSend = JSON.stringify(backResp);
-                console.log(backRespSend);
+                log(backRespSend);
                 return reply.code(statusCode).type(`${mediaType}; charset=utf-8`).send(backRespSend);
             }
             // 处理字符串类型的响应
@@ -671,13 +687,13 @@ export default (fastify, options, done) => {
                 }
 
                 let backRespSend = JSON.stringify(result);
-                console.log(backRespSend);
+                log(backRespSend);
                 return reply.code(statusCode).type(`${mediaType}; charset=utf-8`).send(backRespSend);
             } else {
                 // 其他类型的响应，返回失败
                 const error_msg = `${jxName}解析失败`;
                 fastify.log.error(error_msg);
-                console.error(error_msg);
+                logError(error_msg);
                 return reply.status(404).send({error: error_msg});
             }
 
@@ -685,7 +701,7 @@ export default (fastify, options, done) => {
             // 错误处理和日志记录
             const error_msg = `Failed to proxy jx ${jxName}: ${error.message}`;
             fastify.log.error(error_msg);
-            console.error(error_msg);
+            logError(error_msg);
             reply.status(500).send({error: error_msg});
         }
     });
