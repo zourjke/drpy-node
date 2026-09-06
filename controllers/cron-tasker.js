@@ -113,6 +113,16 @@ export default (fastify, options, done) => {
                 cronTask: null
             };
 
+            // L20（防御）：注册前先停掉同名旧任务的 CronJob，避免未来引入"热加载脚本"
+            // 能力时旧 Job 及其 context(fastify) 闭包被双份持有
+            const existing = taskRegistry.get(scriptName);
+            if (existing?.cronTask) {
+                try {
+                    existing.cronTask.stop();
+                } catch {
+                    // 旧任务已停止/已损坏时忽略
+                }
+            }
             taskRegistry.set(scriptName, taskInfo);
 
             if (script.schedule) {
