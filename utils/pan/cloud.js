@@ -3,6 +3,7 @@
  * 提供天翼云盘分享链接解析、文件下载、登录认证等功能
  * 支持分享链接验证、文件列表获取、下载地址生成等操作
  */
+import {log, logError} from '../log.js';
 import {ENV} from "../env.js";
 import axios from "axios";
 import qs from "qs";
@@ -48,13 +49,13 @@ class CloudDrive {
      */
     async init() {
         if (this.account) {
-            console.log('天翼账号获取成功：' + this.account)
+            log('天翼账号获取成功：' + this.account)
         }
         if (this.password) {
-            console.log('天翼密码获取成功：' + this.password)
+            log('天翼密码获取成功：' + this.password)
         }
         if (this.cookie) {
-            console.log('天翼cookie获取成功' + this.cookie)
+            log('天翼cookie获取成功' + this.cookie)
         } else {
             ENV.set('cloud_cookie', await this.login(this.account, this.password))
         }
@@ -142,10 +143,10 @@ class CloudDrive {
                 cookies += '; ' + resp.headers['set-cookie'].map(it => it.split(';')[0]).join(';');
                 ENV.set('cloud_cookie', cookies)
             } else {
-                console.error('Error during login:', resp.data);
+                logError('Error during login:', resp.data);
             }
         } catch (error) {
-            console.error('Error during login:', error);
+            logError('Error during login:', error);
         }
     }
 
@@ -291,7 +292,7 @@ class CloudDrive {
             }
 
         } catch (error) {
-            console.error('Error during getShareInfo:', error);
+            logError('Error during getShareInfo:', error);
         }
     }
 
@@ -333,7 +334,7 @@ class CloudDrive {
                 return [...videos, ...result.flat()];
             }
         } catch (e) {
-            console.log(e)
+            log(e)
         }
     }
 
@@ -376,7 +377,7 @@ class CloudDrive {
             }
             return videos
         } catch (e) {
-            console.log(e)
+            log(e)
         }
 
     }
@@ -394,9 +395,9 @@ class CloudDrive {
             'Accept-Encoding': 'gzip, deflate, br, zstd',
         };
         if (!this.cookie && this.account && this.password && this.index < 2) {
-            console.log("正在登录，请稍等....")
+            log("正在登录，请稍等....")
             await this.login(this.account, this.password);
-            console.log("登录成功,获取cookie成功")
+            log("登录成功,获取cookie成功")
         }
         headers['Cookie'] = this.cookie;
         try {
@@ -419,13 +420,13 @@ class CloudDrive {
             return link;
         } catch (error) {
             if (error.response && error.response.status === 400 && this.index < 2) {
-                console.log("获取播放地址失败，错误信息为：" + error.response.data)
-                console.log('cookie失效，正在重新获取cookie')
+                log("获取播放地址失败，错误信息为：" + error.response.data)
+                log('cookie失效，正在重新获取cookie')
                 ENV.set('cloud_cookie', '');
                 this.index += 1;
                 return await this.getShareUrl(fileId, shareId);
             } else {
-                console.error('Error during getShareUrl:', error.message, error.response ? error.response.status : 'N/A');
+                logError('Error during getShareUrl:', error.message, error.response ? error.response.status : 'N/A');
             }
         } finally {
             if (this.index >= 2) {
