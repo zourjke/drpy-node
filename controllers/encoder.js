@@ -1,4 +1,5 @@
-/**
+/**import {log} from '../utils/log.js';
+
  * 编码器控制器
  * 
  * 提供多种文本编码和加密功能的HTTP API接口。
@@ -32,7 +33,7 @@ if (args.length > 0) {
     // 命令行模式：如果有参数，读取文件并进行Gzip压缩
     const filePath = args[0]; // 第一个参数作为文件路径
     let content = readFileSync(filePath, 'utf8');
-    console.log(`文件 ${filePath} 的内容长度为:${content.length}`);
+    log(`文件 ${filePath} 的内容长度为:${content.length}`);
     // 将压缩后的内容写入到 .gz 扩展名的文件中
     writeFileSync(filePath + '.gz', jsEncoder.gzip(content), 'utf-8');
 }
