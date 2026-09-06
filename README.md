@@ -38,6 +38,8 @@ nodejs作为服务端的drpy实现。全面升级异步写法
 
 * [Admin 管理面板](/apps/admin)
 * [DrPlayer](/apps/drplayer)
+* [Music控制台](/lx/)
+* [音乐播放器](/music/)
 * [Websocket实时日志](/apps/websocket)
 * [cookie管理插件](/apps/cookie-butler/index.html)
 * [cron表达式插件](/apps/cron-generator/index.html)
@@ -72,6 +74,64 @@ nodejs作为服务端的drpy实现。全面升级异步写法
 * [皮卡丘](https://github.com/ingriddaleusag-dotcom/PeekPiliRelease)
 
 ## 更新记录
+
+### 20260831b
+
+更新至V2.0.4
+
+1. 插件市场新增 cctv-h5e：央视频点播 hls_h5e 与频道直播 cdrm 加密TS 解密为标准 MPEG-TS，三端二进制（win-x64 / linux-x64 / linux-arm64）
+2. 新增央视频演示源：直播（17 频道入口）+ 8 个栏目点播，解密代理客户端只访问主服务端口
+3. 修复全局 CATE_EXCLUDE 含「新闻」误杀分类、市场卡片 platform-arch 平台判定
+4. 播放 URL 补伪后缀 #.m3u8/#.ts 兼容嗅探型播放器；AGENTS.md 沉淀二进制编译与 cntv 对接经验
+
+### 20260831
+
+更新至V2.0.3
+
+1. 源管理新增启用/停用（单个开关+批量）：停用源退出配置与订阅分发，全源检测不受影响
+2. 源验证拆分为 语法检查 + 接口全流程验证（首页/分类/详情/搜索/可选播放，三级评分）
+3. 插件体系新增 python 型 runtime（.venv + pip 依赖管理）；hongguo-bridge 播放桥插件案例支持自定义端口
+4. 文件管理支持创建/编辑/删除：托管目录限 json|js|txt|m3u|conf，框架文件受保护禁删，编辑接入 monaco 高亮
+5. 修复 /unified-proxy 回环播放 403、TVBox 壳子参数兼容回归；QUICK ACTIONS 与侧边栏对齐
+
+### 20260830b
+
+更新至V2.0.2
+
+1. 插件体系新增 python 型 runtime：插件目录内独立 .venv + pip 依赖管理，启停/日志/崩溃处理与 node 型一致
+2. 全能代理新增自身回环链路支持与 unified_proxy_self_redirect 开关（默认回环转发，可切 302 直连单层代理）
+3. 首个 python 型私有插件案例 hongguo-bridge（红果短剧播放桥）：手动上传安装，规范见 docs/python-plugin-design.md
+
+### 20260830
+
+更新至V2.0.1
+
+1. hipy/php 源代理新增 toBytes=2/3 流式语义，可稳定代理数 GB、1 小时以上媒体资源
+2. /proxy 注入 __range/__mediaProxy 保留参数，py/php 基类新增流式代理辅助方法
+3. 修复 php 调用超时遗留孤儿进程、空代理 500、超时输家 unhandledRejection 等问题
+4. hipy 引擎死代码清理、三处模块缓存 LRU 化、console 输出统一收口至分级日志
+5. t4api.md 补齐 toBytes 代理协议文档；桥接超时/单包上限支持环境变量覆写
+
+### 20260829
+
+更新至V2.0.0
+
+1. 管理界面「Instrument Panel」全站重构：暗色/亮色双主题、全新 UI 组件库与移动端适配
+2. 接口文档集成 Swagger UI，文档由路由 schema 自动生成，与实际接口永不脱节
+3. 新增插件市场与验证码识别代理（OCR/滑块/旋转）
+4. 文件管理预览接入 monaco 编辑器，支持语法高亮
+5. 修复十余处内存与资源泄漏，长时间运行更稳定
+6. 大规模重构收敛重复实现，新增零依赖测试体系
+
+[点此查看V2.0.0详细更新内容](docs/updateRecord.md)
+
+### 20260825
+
+更新至V1.4.8
+
+### 20260718
+
+更新至V1.4.7
 
 ### 20260527
 
