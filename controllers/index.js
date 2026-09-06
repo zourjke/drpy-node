@@ -14,6 +14,7 @@ import webController from './web.js';
 import httpController from './http.js';
 import clipboardPusherController from './clipboard-pusher.js';
 // import taskerController from './tasker.js';
+import clashProxyController from './clash-proxy.js';
 import cronTaskerController from './cron-tasker.js';
 import sourceCheckerController from './source-checker.js';
 import imageStoreController from './image-store.js';
@@ -25,10 +26,16 @@ import unifiedProxyController from './unified-proxy.js';
 import githubController from './github.js';
 import websocketServerController from "./websocketServer.js";
 import adminController from './admin.js';
+import lxProxyController from './lx-proxy.js';
+import captchaProxyController from './captcha-proxy.js';
+import swaggerController from './swagger.js';
 
 export const registerRoutes = (fastify, options) => {
     fastify.register(formBody);
     fastify.register(websocket);
+
+    // swagger 必须先于业务路由注册：其文档收集依赖 onRoute 钩子，晚注册会错过已有路由
+    fastify.register(swaggerController, options);
 
     fastify.register(websocketController, options);
     fastify.register(staticController, options);
@@ -44,6 +51,7 @@ export const registerRoutes = (fastify, options) => {
     fastify.register(httpController, options);
     fastify.register(clipboardPusherController, options);
     // fastify.register(taskerController, options);
+    fastify.register(clashProxyController, options);
     fastify.register(cronTaskerController, options);
     fastify.register(sourceCheckerController, options);
     fastify.register(imageStoreController, options);
@@ -54,6 +62,8 @@ export const registerRoutes = (fastify, options) => {
     fastify.register(unifiedProxyController, options);
     fastify.register(githubController, options);
     fastify.register(adminController, options);
+    fastify.register(lxProxyController, options);
+    fastify.register(captchaProxyController, options);
 };
 
 export const registerWsRoutes = (wsApp, options) => {
