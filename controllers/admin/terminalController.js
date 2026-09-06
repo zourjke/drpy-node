@@ -1,3 +1,4 @@
+import {logWarn} from '../../utils/log.js';
 import os from 'os';
 import { PROJECT_ROOT } from '../../utils/pathHelper.js';
 
@@ -13,7 +14,7 @@ try {
     }
     isPtyAvailable = true;
 } catch (error) {
-    console.warn('[Terminal] node-pty load failed, terminal feature will be disabled.', error.message);
+    logWarn('[Terminal] node-pty load failed, terminal feature will be disabled.', error.message);
     isPtyAvailable = false;
 }
 
