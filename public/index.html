@@ -39,6 +39,8 @@
 <ul>
 <li><a href="/apps/admin">Admin 管理面板</a></li>
 <li><a href="/apps/drplayer">DrPlayer</a></li>
+<li><a href="/lx/">Music控制台</a></li>
+<li><a href="/music/">音乐播放器</a></li>
 <li><a href="/apps/websocket">Websocket实时日志</a></li>
 <li><a href="/apps/cookie-butler/index.html">cookie管理插件</a></li>
 <li><a href="/apps/cron-generator/index.html">cron表达式插件</a></li>
@@ -73,6 +75,54 @@
 <li><a href="https://github.com/ingriddaleusag-dotcom/PeekPiliRelease">皮卡丘</a></li>
 </ul>
 <h2 id="更新记录">更新记录</h2>
+<h3 id="20260831b">20260831b</h3>
+<p>更新至V2.0.4</p>
+<ol>
+<li>插件市场新增 cctv-h5e：央视频点播 hls_h5e 与频道直播 cdrm 加密TS 解密为标准 MPEG-TS，三端二进制（win-x64 / linux-x64 / linux-arm64）</li>
+<li>新增央视频演示源：直播（17 频道入口）+ 8 个栏目点播，解密代理客户端只访问主服务端口</li>
+<li>修复全局 CATE_EXCLUDE 含「新闻」误杀分类、市场卡片 platform-arch 平台判定</li>
+<li>播放 URL 补伪后缀 #.m3u8/#.ts 兼容嗅探型播放器；AGENTS.md 沉淀二进制编译与 cntv 对接经验</li>
+</ol>
+<h3 id="20260831">20260831</h3>
+<p>更新至V2.0.3</p>
+<ol>
+<li>源管理新增启用/停用（单个开关+批量）：停用源退出配置与订阅分发，全源检测不受影响</li>
+<li>源验证拆分为 语法检查 + 接口全流程验证（首页/分类/详情/搜索/可选播放，三级评分）</li>
+<li>插件体系新增 python 型 runtime（.venv + pip 依赖管理）；hongguo-bridge 播放桥插件案例支持自定义端口</li>
+<li>文件管理支持创建/编辑/删除：托管目录限 json|js|txt|m3u|conf，框架文件受保护禁删，编辑接入 monaco 高亮</li>
+<li>修复 /unified-proxy 回环播放 403、TVBox 壳子参数兼容回归；QUICK ACTIONS 与侧边栏对齐</li>
+</ol>
+<h3 id="20260830b">20260830b</h3>
+<p>更新至V2.0.2</p>
+<ol>
+<li>插件体系新增 python 型 runtime：插件目录内独立 .venv + pip 依赖管理，启停/日志/崩溃处理与 node 型一致</li>
+<li>全能代理新增自身回环链路支持与 unified_proxy_self_redirect 开关（默认回环转发，可切 302 直连单层代理）</li>
+<li>首个 python 型私有插件案例 hongguo-bridge（红果短剧播放桥）：手动上传安装，规范见 docs/python-plugin-design.md</li>
+</ol>
+<h3 id="20260830">20260830</h3>
+<p>更新至V2.0.1</p>
+<ol>
+<li>hipy/php 源代理新增 toBytes=2/3 流式语义，可稳定代理数 GB、1 小时以上媒体资源</li>
+<li>/proxy 注入 __range/__mediaProxy 保留参数，py/php 基类新增流式代理辅助方法</li>
+<li>修复 php 调用超时遗留孤儿进程、空代理 500、超时输家 unhandledRejection 等问题</li>
+<li>hipy 引擎死代码清理、三处模块缓存 LRU 化、console 输出统一收口至分级日志</li>
+<li>t4api.md 补齐 toBytes 代理协议文档；桥接超时/单包上限支持环境变量覆写</li>
+</ol>
+<h3 id="20260829">20260829</h3>
+<p>更新至V2.0.0</p>
+<ol>
+<li>管理界面「Instrument Panel」全站重构：暗色/亮色双主题、全新 UI 组件库与移动端适配</li>
+<li>接口文档集成 Swagger UI，文档由路由 schema 自动生成，与实际接口永不脱节</li>
+<li>新增插件市场与验证码识别代理（OCR/滑块/旋转）</li>
+<li>文件管理预览接入 monaco 编辑器，支持语法高亮</li>
+<li>修复十余处内存与资源泄漏，长时间运行更稳定</li>
+<li>大规模重构收敛重复实现，新增零依赖测试体系</li>
+</ol>
+<p><a href="docs/updateRecord.md">点此查看V2.0.0详细更新内容</a></p>
+<h3 id="20260825">20260825</h3>
+<p>更新至V1.4.8</p>
+<h3 id="20260718">20260718</h3>
+<p>更新至V1.4.7</p>
 <h3 id="20260527">20260527</h3>
 <p>更新至V1.4.6</p>
 <h3 id="20260428">20260428</h3>
