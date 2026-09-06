@@ -1,3 +1,4 @@
+import {log, logError} from './utils/log.js';
 import { performance } from 'perf_hooks';
 const startTime = performance.now();
 
@@ -8,7 +9,9 @@ import os from 'os';
 import qs from 'qs';
 import {fileURLToPath} from 'url';
 import {validateBasicAuth, validateJs, validatePwd, validatHtml} from "./utils/api_validate.js";
-import {startAllPlugins} from "./utils/pluginManager.js";
+import {withTimeout} from "./utils/with-timeout.js";
+import {startAllPlugins, stopAllPlugins} from "./utils/pluginManager.js";
+import {registry} from "./utils/pluginRegistry.js";
 import { PROJECT_ROOT } from "./utils/pathHelper.js";
 // 注册自定义import钩子
 import './utils/esm-register.mjs';
@@ -41,17 +44,16 @@ const catLibDir = path.join(__dirname, 'spider/catLib');
 const xbpqDir = path.join(__dirname, 'spider/xbpq');
 const configDir = path.join(__dirname, 'config');
 
-// 异步启动插件，不阻塞主线程
-let pluginProcs = {};
+// 异步启动插件，不阻塞主线程（进程句柄写入 pluginRegistry，管理 API 通过注册表启停/查状态）
 setTimeout(() => {
-    pluginProcs = startAllPlugins(__dirname);
+    startAllPlugins(__dirname);
 }, 0);
 
 // 添加钩子事件
 fastify.addHook('onReady', async () => {
     await checkPhpAvailable();
     const endTime = performance.now();
-    console.log(`🚀 Server started in ${(endTime - startTime).toFixed(2)}ms`);
+    log(`🚀 Server started in ${(endTime - startTime).toFixed(2)}ms`);
     try {
         await daemon.startDaemon();
         fastify.log.info('Python守护进程已启动');
@@ -68,6 +70,12 @@ async function onClose() {
     } catch (error) {
         fastify.log.error(`停止Python守护进程失败: ${error.message}`);
     }
+        // 停止所有插件子进程，避免孤儿进程占用端口和内存
+    try {
+        await stopAllPlugins();
+    } catch (error) {
+        fastify.log.error(`停止插件子进程失败: ${error.message}`);
+    }
 }
 
 // 停止时清理守护进程
@@ -77,7 +85,7 @@ fastify.addHook('onClose', async () => {
 
 // 给静态目录插件中心挂载basic验证
 fastify.addHook('preHandler', (req, reply, done) => {
-    if (req.raw.url.startsWith('/apps/') || req.raw.url.startsWith('/api/admin/')) {
+    if (req.raw.url.startsWith('/apps/') || req.raw.url.startsWith('/api/admin/') || req.raw.url.startsWith('/clash')) {
         if (req.raw.url.includes('clipboard-pusher/index.html')) {
             validateBasicAuth(req, reply, async () => {
                 validatHtml(req, reply, rootDir).then(() => done());
@@ -90,6 +98,8 @@ fastify.addHook('preHandler', (req, reply, done) => {
         validatePwd(req, reply, done).then(async () => {
             validateJs(req, reply, dr2Dir).then(() => done());
         });
+    } else if (req.raw.url === '/lx' || req.raw.url === '/lx/' || req.raw.url === '/music' || req.raw.url === '/music/') {
+        validateBasicAuth(req, reply, done);
     } else {
         done();
     }
@@ -113,13 +123,13 @@ fastify.addHook('onRequest', async (req, reply) => {
 });
 
 process.on("uncaughtException", (err) => {
-    console.error("未捕获异常:", err);
+    logError("未捕获异常:", err);
     // 不退出，让主进程继续跑
 });
 
 process.on('unhandledRejection', (err) => {
     fastify.log.error(`未处理的Promise拒绝:${err.message}`);
-    console.log(`发生了致命的错误，已阻止进程崩溃。${err.stack}`);
+    log(`发生了致命的错误，已阻止进程崩溃。${err.stack}`);
     // 根据情况决定是否退出进程
     // 清理后退出进程（避免程序处于未知状态）
     // process.exit(1);
@@ -127,17 +137,23 @@ process.on('unhandledRejection', (err) => {
 
 // 统一退出处理函数
 const handleExit = async (signal) => {
-    console.log(`\n收到信号 ${signal}，正在优雅关闭服务器...`);
+    log(`\n收到信号 ${signal}，正在优雅关闭服务器...`);
     try {
-        await onClose();
+        // L19：改用 fastify.close() 走 avvio 生命周期，触发全部 onClose 钩子
+        // （daemon/plugins 清理、cron-tasker 任务停止等）；
+        // 原先直调原生 server.close() 导致这些钩子从未被执行。
+        // 带 8s 兜底：慢速流转发等长连接场景下防止退出悬挂（pm2 kill_timeout 建议 >= 5000ms）。
+        await withTimeout(fastify.close(), 8000, '主服务优雅关闭');
         // 停止 WebSocket 服务器
         await stopWebSocketServer();
-        // 停止主服务器
-        await fastify.server.close();
-        console.log('🛑 所有服务器已优雅关闭');
+        // flush 并关闭日志文件流（若启用）
+        try { fastlogger.closeLogStream(); } catch {}
+        // 释放全局 puppeteer 浏览器实例（若有），消除退出时的孤儿 Chromium 进程
+        try { await globalThis.pupWebview?.closeBrowser?.(); } catch {}
+        log('🛑 所有服务器已优雅关闭');
         process.exit(0);
     } catch (error) {
-        console.error('关闭服务器时出错:', error);
+        logError('关闭服务器时出错:', error);
         process.exit(1);
     }
 };
@@ -161,12 +177,14 @@ if (process.platform === 'win32') {
 
 // 捕获 Node.js 主动退出（比如 pm2 stop 也会触发 exit）
 process.on('exit', async (code) => {
-    console.log(`Process exiting with code: ${code}`);
+    log(`Process exiting with code: ${code}`);
     // 这里不能直接用 await fastify.close()（Node 在 exit 里不等异步）
     // 但 Fastify 的 SIGINT/SIGTERM 会提前触发，所以这里只记录日志
-    for (const [name, proc] of Object.entries(pluginProcs)) {
-        console.log(`[pluginManager] 结束插件 ${name} ${proc.pid}`);
-        proc.kill();
+    for (const [name, entry] of Object.entries(registry.procs)) {
+        if (!entry.proc.killed) {
+            log(`[pluginManager] 结束插件 ${name} ${entry.proc.pid}`);
+            try { entry.proc.kill('SIGKILL'); } catch (_) {}
+        }
     }
 });
 
@@ -233,7 +251,7 @@ const start = async () => {
         const interfaces = os.networkInterfaces();
         let lanAddress = 'Not available';
         let wsLanAddress = 'Not available';
-        // console.log('interfaces:', interfaces);
+        // log('interfaces:', interfaces);
         for (const [key, iface] of Object.entries(interfaces)) {
             if (key.startsWith('VMware Network Adapter VMnet') || !iface) continue;
             for (const config of iface) {
@@ -245,23 +263,23 @@ const start = async () => {
             }
         }
 
-        console.log(`🚀 服务器启动成功:`);
-        console.log(`📡 主服务 (端口 ${PORT}):`);
-        console.log(`  - Local: ${localAddress}`);
-        console.log(`  - LAN:   ${lanAddress}`);
-        console.log(`🔌 WebSocket服务 (端口 ${WsPORT}):`);
-        console.log(`  - Local: ${wsLocalAddress}`);
-        console.log(`  - LAN:   ${wsLanAddress}`);
-        console.log(`⚙️  系统信息:`);
-        console.log(`  - PLATFORM: ${process.platform} ${process.arch}`);
-        console.log(`  - VERSION:  ${process.version}`);
+        log(`🚀 服务器启动成功:`);
+        log(`📡 主服务 (端口 ${PORT}):`);
+        log(`  - Local: ${localAddress}`);
+        log(`  - LAN:   ${lanAddress}`);
+        log(`🔌 WebSocket服务 (端口 ${WsPORT}):`);
+        log(`  - Local: ${wsLocalAddress}`);
+        log(`  - LAN:   ${wsLanAddress}`);
+        log(`⚙️  系统信息:`);
+        log(`  - PLATFORM: ${process.platform} ${process.arch}`);
+        log(`  - VERSION:  ${process.version}`);
         if (process.env.VERCEL) {
-            console.log('Running on Vercel!');
-            console.log('Vercel Environment:', process.env.VERCEL_ENV); // development, preview, production
-            console.log('Vercel URL:', process.env.VERCEL_URL);
-            console.log('Vercel Region:', process.env.VERCEL_REGION);
+            log('Running on Vercel!');
+            log('Vercel Environment:', process.env.VERCEL_ENV); // development, preview, production
+            log('Vercel URL:', process.env.VERCEL_URL);
+            log('Vercel Region:', process.env.VERCEL_REGION);
         } else {
-            console.log('Not running on Vercel!');
+            log('Not running on Vercel!');
         }
         return true;
     } catch (err) {
@@ -277,7 +295,7 @@ const stop = async () => {
         await stopWebSocketServer();
         // 停止主服务器
         await fastify.server.close();
-        console.log('🛑 所有服务已优雅停止');
+        log('🛑 所有服务已优雅停止');
         return true;
     } catch (err) {
         fastify.log.error(`停止服务器时发生错误:${err.message}`);
