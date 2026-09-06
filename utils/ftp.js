@@ -17,6 +17,7 @@
  * @version 1.0.0
  */
 
+import {logError, logWarn} from './log.js';
 import { Client } from 'basic-ftp';
 import { createReadStream, createWriteStream } from 'fs';
 import { pipeline } from 'stream/promises';
@@ -113,7 +114,7 @@ export class FTPClient {
         } catch (error) {
             this.isConnected = false;
             this.connectionPromise = null;
-            console.error('FTP connection failed:', error.message);
+            logError('FTP connection failed:', error.message);
             throw new Error(`Failed to connect to FTP server: ${error.message}`);
         }
     }
@@ -127,7 +128,7 @@ export class FTPClient {
             try {
                 this.client.close();
             } catch (error) {
-                console.warn('Error closing FTP connection:', error.message);
+                logWarn('Error closing FTP connection:', error.message);
             }
             this.client = null;
         }
@@ -149,7 +150,7 @@ export class FTPClient {
             }
             return false;
         } catch (error) {
-            console.error('FTP connection test failed:', error.message);
+            logError('FTP connection test failed:', error.message);
             return false;
         }
     }
