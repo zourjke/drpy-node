@@ -11,6 +11,9 @@ import {HttpsProxyAgent} from 'https-proxy-agent';
  * @property {number} [maxSockets=64] - 最大连接数，默认 64
  * @property {number} [timeout=30000] - 超时时间(毫秒)，默认 30000
  * @property {boolean} [rejectUnauthorized=false] - 是否拒绝未经授权的证书，默认 false(忽略证书错误)
+ * @property {boolean} [keepAlive=true] - 是否保持连接池复用 (C8: 原先该参数被静默丢弃)
+ * @property {number} [keepAliveMsecs=30000] - keep-alive 心跳间隔毫秒 (C8)
+ * @property {number} [maxFreeSockets=16] - 空闲连接池上限 (C8)
  */
 
 /**
@@ -22,11 +25,18 @@ export function createAxiosInstance(options = {}) {
     const {
         maxSockets = 64,
         timeout = 30000,
-        rejectUnauthorized = false
+        rejectUnauthorized = false,
+        // C8：调用方（如 mediaProxy）传入的连接池参数原先被解构丢弃，
+        // "32 连接池 + 空闲上限"实际从未生效；现全部接住并应用到底层 Agent。
+        keepAlive = true,
+        keepAliveMsecs = 30000,
+        maxFreeSockets = 16
     } = options;
 
     const AgentOption = {
-        keepAlive: true,
+        keepAlive,
+        keepAliveMsecs,
+        maxFreeSockets,
         maxSockets: maxSockets,
         timeout: timeout
     };
