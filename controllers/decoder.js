@@ -1,3 +1,4 @@
+import {log} from '../utils/log.js';
 import {getOriginalJs, jsDecoder} from '../libs_drpy/drpyCustom.js';
 import {readFileSync, writeFileSync, existsSync} from 'fs';
 import path from "path";
@@ -9,7 +10,7 @@ if (args.length > 0) {
     // 如果有参数，读取文件并打印内容
     const filePath = args[0]; // 第一个参数作为文件路径
     let content = readFileSync(filePath, 'utf8');
-    console.log(`文件 ${filePath} 的内容长度为:${content.length}`);
+    log(`文件 ${filePath} 的内容长度为:${content.length}`);
     writeFileSync(filePath.replace(/\.gz$/, '.ugz'), jsDecoder.ungzip(content), 'utf-8');
 }
 
@@ -39,8 +40,8 @@ export default (fastify, options, done) => {
         try {
             const local_auto_code = readFileSync(authFilePath, 'utf-8').trim();
             const auth_codes = jsDecoder.aes_decrypt(local_auto_code).trim().split('\n');
-            // console.log('auth_codes:',auth_codes);
-            // console.log('auth_code:', auth_code);
+            // log('auth_codes:',auth_codes);
+            // log('auth_code:', auth_code);
             if (!auth_codes.includes(auth_code)) {
                 return reply.status(200).send({error: 'your auth_code is not correct'});
             }
