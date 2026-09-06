@@ -1,36 +1,27 @@
-import path from 'path';
+import { loadPluginsConfig, savePluginsConfig, USER_PLUGINS_CONFIG_PATH, EXAMPLE_PLUGINS_CONFIG_PATH } from '../../utils/pluginsConfigFile.js';
+import { reloadPluginsConfig } from '../../utils/pluginManager.js';
 import fs from '../../utils/fsWrapper.js';
-import { pathToFileURL } from 'url';
-import { PROJECT_ROOT } from '../../utils/pathHelper.js';
-
-const ROOT_DIR = PROJECT_ROOT;
-const userConfigPath = path.join(ROOT_DIR, '.plugins.js');
-const exampleConfigPath = path.join(ROOT_DIR, '.plugins.example.js');
+import { getInstalledManifest } from '../../utils/pluginMarket.js';
 
 /**
- * 获取插件列表
+ * 获取插件列表（合并磁盘上的已安装版本信息：market 安装的插件有 plugin.json，版本可读；
+ * 手工放置的目录无 manifest，版本显示为未知）
  */
 export async function getPlugins(req, reply) {
     try {
-        let plugins = [];
-        let isDefault = false;
-
-        // 加载插件配置
-        if (await fs.pathExists(userConfigPath)) {
-            // 使用时间戳作为查询参数强制重新加载模块，避免模块缓存
-            const modulePath = `${pathToFileURL(userConfigPath).href}?t=${Date.now()}`;
-            const mod = await import(modulePath);
-            plugins = mod.default || [];
-        } else if (await fs.pathExists(exampleConfigPath)) {
-            const modulePath = `${pathToFileURL(exampleConfigPath).href}?t=${Date.now()}`;
-            const mod = await import(modulePath);
-            plugins = mod.default || [];
-            isDefault = true;
-        }
+        const { plugins, isDefault } = await loadPluginsConfig();
+        const data = plugins.map(p => {
+            const manifest = getInstalledManifest(p.name);
+            return {
+                ...p,
+                installedVersion: manifest ? (manifest.version || null) : null,
+                marketManaged: !!(manifest && manifest._source === 'market')
+            };
+        });
 
         return reply.send({
             success: true,
-            data: plugins,
+            data,
             isDefault
         });
     } catch (error) {
@@ -48,7 +39,7 @@ export async function getPlugins(req, reply) {
 export async function savePlugins(req, reply) {
     try {
         const { plugins } = req.body;
-        
+
         if (!Array.isArray(plugins)) {
             return reply.code(400).send({
                 success: false,
@@ -56,16 +47,9 @@ export async function savePlugins(req, reply) {
             });
         }
 
-        const fileContent = `/**
- * 插件配置文件 (自动生成)
- */
-
-const plugins = ${JSON.stringify(plugins, null, 4)};
-
-export default plugins;
-`;
-
-        await fs.writeFile(userConfigPath, fileContent, 'utf-8');
+        savePluginsConfig(plugins);
+        // 同步重载 pluginManager 内存配置，保存后的 env/params 重启插件即可生效（无需重启主服务）
+        await reloadPluginsConfig();
 
         return reply.send({
             success: true,
@@ -85,8 +69,9 @@ export default plugins;
  */
 export async function restorePlugins(req, reply) {
     try {
-        if (await fs.pathExists(exampleConfigPath)) {
-            await fs.copy(exampleConfigPath, userConfigPath);
+        if (await fs.pathExists(EXAMPLE_PLUGINS_CONFIG_PATH)) {
+            await fs.copy(EXAMPLE_PLUGINS_CONFIG_PATH, USER_PLUGINS_CONFIG_PATH);
+            await reloadPluginsConfig();
             return reply.send({
                 success: true,
                 message: '已恢复默认插件配置'
