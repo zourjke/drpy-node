@@ -564,57 +564,56 @@ class SourceChecker {
     }
     
     async fullCheck(source, result, extend) {
-        // 先检测推荐和分类接口
-        const coreTests = [
-            { name: 'home', params: { extend } },
-            { name: 'category', params: { ac: 'list', t: '1', pg: 1, extend } }
-        ];
-        
+        // 1. 检测推荐接口
+        const homeResult = await this.testApi(source.api, { extend });
+        result.details.home = homeResult;
+
         let coreSuccessCount = 0;
-        
-        // 检测核心接口（推荐和分类）
-        for (const test of coreTests) {
-            try {
-                const testResult = await this.testApi(source.api, test.params);
-                result.details[test.name] = testResult;
-                
-                if (testResult.success && this.isValidData(testResult.data)) {
-                    coreSuccessCount++;
-                }
-            } catch (error) {
-                result.details[test.name] = { success: false, error: error.message };
-            }
+        if (homeResult.success && this.isValidData(homeResult.data)) {
+            coreSuccessCount++;
         }
-        
-        // 如果推荐和分类都异常，直接返回异常结果
+
+        // 2. 检测分类接口——用 home 返回的真实 type_id，而非固定 t=1（很多源没有 type_id=1 的分类）
+        let categoryId = '1'; // 兜底
+        if (homeResult.data && Array.isArray(homeResult.data.class) && homeResult.data.class.length > 0) {
+            const firstValid = homeResult.data.class.find(c => c && c.type_id);
+            if (firstValid) categoryId = String(firstValid.type_id);
+        }
+        const cateResult = await this.testApi(source.api, {
+            ac: 'list', t: categoryId, pg: 1, extend
+        });
+        result.details.category = cateResult;
+        if (cateResult.success && this.isValidData(cateResult.data)) {
+            coreSuccessCount++;
+        }
+
+        // 推荐和分类都异常，直接返回异常结果
         if (coreSuccessCount === 0) {
             result.status = 'error';
             result.message = '推荐和分类接口均异常';
             this.log(`${source.name}: 推荐和分类接口均异常`, 'error');
             return;
         }
-        
-        // 如果至少有一个核心接口正常，继续检测其他接口
-        const additionalTests = [
-            { name: 'search', params: { wd: '测试', extend } },
-            { name: 'detail', params: { ac: 'detail', ids: '1', extend } }
-        ];
-        
+
         let totalSuccessCount = coreSuccessCount;
-        
-        for (const test of additionalTests) {
-            try {
-                const testResult = await this.testApi(source.api, test.params);
-                result.details[test.name] = testResult;
-                
-                if (testResult.success) {
-                    totalSuccessCount++;
-                }
-            } catch (error) {
-                result.details[test.name] = { success: false, error: error.message };
-            }
+
+        // 3. 检测搜索接口
+        const searchResult = await this.testApi(source.api, { wd: '测试', extend });
+        result.details.search = searchResult;
+        if (searchResult.success) totalSuccessCount++;
+
+        // 4. 检测详情接口——用分类返回的真实 vod_id，而非固定 ids=1（影片 id 几乎不会是 1）
+        let detailId = '1'; // 兜底
+        if (cateResult.data && Array.isArray(cateResult.data.list) && cateResult.data.list.length > 0) {
+            const firstItem = cateResult.data.list.find(it => it && it.vod_id);
+            if (firstItem) detailId = String(firstItem.vod_id);
         }
-        
+        const detailResult = await this.testApi(source.api, {
+            ac: 'detail', ids: detailId, extend
+        });
+        result.details.detail = detailResult;
+        if (detailResult.success) totalSuccessCount++;
+
         if (totalSuccessCount >= 2) {
             result.status = 'success';
             result.message = `${totalSuccessCount}/4 接口正常`;
@@ -626,7 +625,7 @@ class SourceChecker {
         }
     }
     
-    async testApi(baseUrl, params) {
+    async testApi(baseUrl, params, timeout = 10000) {
         try {
             const url = new URL(baseUrl);
             Object.keys(params).forEach(key => {
@@ -635,20 +634,28 @@ class SourceChecker {
                 }
             });
             
+            // 浏览器原生 fetch 不支持 timeout 选项（会被静默忽略），必须用 AbortController 才能真正生效
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeout);
+
             const response = await fetch(url.toString(), {
                 method: 'GET',
-                timeout: 10000
+                signal: controller.signal
             });
-            
+
+            clearTimeout(timer);
+
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
-            
+
             const data = await response.json();
-            return { success: true, data };
-            
+            return { success: true, data, reqUrl: url.toString() };
+
         } catch (error) {
-            return { success: false, error: error.message };
+            // 超时单独标识，便于日志区分是超时还是接口报错
+            const msg = error.name === 'AbortError' ? `请求超时(${timeout}ms)` : error.message;
+            return { success: false, error: msg };
         }
     }
     
@@ -851,43 +858,60 @@ class SourceChecker {
             const extend = this.getExtendParam(source.ext);
             
             // 构建测试URL而不是保存完整数据
+            // 优先使用检测时实际请求的 reqUrl（含真实 type_id/vod_id），缺失时才按固定参数兜底构造
             const testUrls = {};
             if (result.details) {
                 // 推荐接口URL
                 if (result.details.home) {
-                    const homeUrl = new URL(source.api);
-                    if (extend) homeUrl.searchParams.set('extend', extend);
-                    testUrls.home = homeUrl.toString();
+                    if (result.details.home.reqUrl) {
+                        testUrls.home = result.details.home.reqUrl;
+                    } else {
+                        const homeUrl = new URL(source.api);
+                        if (extend) homeUrl.searchParams.set('extend', extend);
+                        testUrls.home = homeUrl.toString();
+                    }
                 }
-                
+
                 // 分类接口URL
                 if (result.details.category) {
-                    const cateUrl = new URL(source.api);
-                    cateUrl.searchParams.set('ac', 'list');
-                    cateUrl.searchParams.set('t', '1'); // 使用第一个分类ID
-                    cateUrl.searchParams.set('pg', '1');
-                    if (extend) cateUrl.searchParams.set('extend', extend);
-                    testUrls.category = cateUrl.toString();
+                    if (result.details.category.reqUrl) {
+                        testUrls.category = result.details.category.reqUrl;
+                    } else {
+                        const cateUrl = new URL(source.api);
+                        cateUrl.searchParams.set('ac', 'list');
+                        cateUrl.searchParams.set('t', '1'); // 兜底
+                        cateUrl.searchParams.set('pg', '1');
+                        if (extend) cateUrl.searchParams.set('extend', extend);
+                        testUrls.category = cateUrl.toString();
+                    }
                 }
-                
+
                 // 搜索接口URL
                 if (result.details.search) {
-                    const searchUrl = new URL(source.api);
-                    searchUrl.searchParams.set('ac', 'list');
-                    searchUrl.searchParams.set('wd', '测试');
-                    if (extend) searchUrl.searchParams.set('extend', extend);
-                    testUrls.search = searchUrl.toString();
+                    if (result.details.search.reqUrl) {
+                        testUrls.search = result.details.search.reqUrl;
+                    } else {
+                        const searchUrl = new URL(source.api);
+                        searchUrl.searchParams.set('ac', 'list');
+                        searchUrl.searchParams.set('wd', '测试');
+                        if (extend) searchUrl.searchParams.set('extend', extend);
+                        testUrls.search = searchUrl.toString();
+                    }
                 }
-                
+
                 // 详情接口URL
                 if (result.details.detail) {
-                    const detailUrl = new URL(source.api);
-                    detailUrl.searchParams.set('ac', 'detail');
-                    detailUrl.searchParams.set('ids', '1');
-                    if (extend) detailUrl.searchParams.set('extend', extend);
-                    testUrls.detail = detailUrl.toString();
+                    if (result.details.detail.reqUrl) {
+                        testUrls.detail = result.details.detail.reqUrl;
+                    } else {
+                        const detailUrl = new URL(source.api);
+                        detailUrl.searchParams.set('ac', 'detail');
+                        detailUrl.searchParams.set('ids', '1'); // 兜底
+                        if (extend) detailUrl.searchParams.set('extend', extend);
+                        testUrls.detail = detailUrl.toString();
+                    }
                 }
-                
+
                 // 播放接口URL
                 if (result.details.play) {
                     const playUrl = new URL(source.api);
@@ -906,6 +930,7 @@ class SourceChecker {
                 type: source.type,
                 searchable: source.searchable,
                 lang: source.lang || 'unknown',
+                ext: source.ext || '', // 保存 ext，供"获取上次报告后重新检测"使用，否则模板源会裸测
                 status: result.status,
                 message: result.message || '',
                 testUrls: testUrls,
@@ -981,7 +1006,8 @@ class SourceChecker {
                 api: source.api,
                 type: source.type,
                 searchable: source.searchable,
-                lang: source.lang || 'unknown'
+                lang: source.lang || 'unknown',
+                ext: source.ext || '' // 恢复 ext，重新检测时模板源才能带上 host/key
             }));
             
             // 设置检测结果
@@ -1124,11 +1150,17 @@ class SourceChecker {
          this.checkModeSelect.value = 'full';
          
          try {
-             await this.checkSource(source, this.sources.indexOf(source));
+             const sourceIndex = this.sources.indexOf(source);
+             await this.checkSource(source, sourceIndex);
              this.log(`手动检测完成: ${source.name}`, 'info');
              // 重新渲染当前筛选的列表
              const filteredSources = this.getFilteredSources();
              this.renderFilteredSourceList(filteredSources);
+             // renderFilteredSourceList 会清空 result-item，需重新填充刚检测的结果明细
+             const result = this.results.get(source.key);
+             if (result && sourceIndex >= 0) {
+                 this.updateSourceDisplay(sourceIndex, result);
+             }
          } catch (error) {
              this.log(`手动检测失败: ${source.name} - ${error.message}`, 'error');
          } finally {
