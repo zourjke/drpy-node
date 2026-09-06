@@ -1,3 +1,4 @@
+import {log, logError, logWarn} from '../utils/log.js';
 import crypto from 'crypto';
 
 export const RSA = {
@@ -38,7 +39,7 @@ export const RSA = {
             const publicKey = crypto.createPublicKey(keyObject);
             return publicKey.export({type: 'spki', format: 'pem'});
         } catch (error) {
-            console.error("PKCS1格式失败:", error.message);
+            logError("PKCS1格式失败:", error.message);
             // 如果PKCS1格式失败，尝试PKCS8格式
             try {
                 const keyObject = crypto.createPrivateKey({
@@ -49,7 +50,7 @@ export const RSA = {
                 const publicKey = crypto.createPublicKey(keyObject);
                 return publicKey.export({type: 'spki', format: 'pem'});
             } catch (error2) {
-                console.error("PKCS8格式也失败:", error2.message);
+                logError("PKCS8格式也失败:", error2.message);
                 throw error;
             }
         }
@@ -87,7 +88,7 @@ export const RSA = {
             const keyDetails = keyObj.asymmetricKeyDetails;
             keySize = (keyDetails.modulusLength || 2048) / 8; // 默认2048位
         } catch (error) {
-            console.warn('无法获取私钥大小，使用默认值256字节:', error.message);
+            logWarn('无法获取私钥大小，使用默认值256字节:', error.message);
             keySize = 256; // 2048 bits / 8 = 256 bytes
         }
         
@@ -109,12 +110,12 @@ export const RSA = {
                     // 手动移除 PKCS1 填充
                     decryptedSegment = this.removePKCS1Padding(decryptedSegment);
                 } catch (error) {
-                    console.error('NO_PADDING 错误:', error.message);
+                    logError('NO_PADDING 错误:', error.message);
                     throw error;
                 }
                 chunks.push(decryptedSegment);
             } catch (error) {
-                console.error(`解密第 ${Math.floor(i / keySize) + 1} 段失败:`, error.message);
+                logError(`解密第 ${Math.floor(i / keySize) + 1} 段失败:`, error.message);
                 throw error;
             }
         }
@@ -132,7 +133,7 @@ export const RSA = {
             const keyDetails = keyObj.asymmetricKeyDetails;
             keySize = (keyDetails.modulusLength || 2048) / 8; // 默认2048位
         } catch (error) {
-            console.warn('无法获取密钥大小，使用默认值2048位:', error.message);
+            logWarn('无法获取密钥大小，使用默认值2048位:', error.message);
             keySize = 256; // 默认2048位 = 256字节
         }
 
@@ -174,7 +175,7 @@ export const RSA = {
 
                         chunks.push(encryptedSegment);
                     } catch (error) {
-                        console.error(`加密第 ${chunks.length + 1} 段失败:`, error.message);
+                        logError(`加密第 ${chunks.length + 1} 段失败:`, error.message);
                         throw error;
                     }
 
@@ -200,14 +201,14 @@ export const RSA = {
 
                     chunks.push(encryptedSegment);
                 } catch (error) {
-                    console.error(`加密最后一段失败:`, error.message);
+                    logError(`加密最后一段失败:`, error.message);
                     throw error;
                 }
             }
 
             return Buffer.concat(chunks);
         } catch (error) {
-            console.error('长数据加密失败:', error.message);
+            logError('长数据加密失败:', error.message);
             throw error;
         }
     },
@@ -224,7 +225,7 @@ export const RSA = {
 
             return decryptedData.toString('utf8');
         } catch (error) {
-            console.error("解密过程中发生错误:", error);
+            logError("解密过程中发生错误:", error);
             throw error;
         }
     },
@@ -253,7 +254,7 @@ export const RSA = {
 
             return encryptedData.toString('base64');
         } catch (error) {
-            console.error("加密过程中发生错误:", error);
+            logError("加密过程中发生错误:", error);
             throw error;
         }
     },
@@ -379,13 +380,13 @@ export const RSA2 = {
         try {
             const mergedDataArray = Uint8Array.from(Buffer.from(data, 'base64'));
             const privateKey = this.importPrivateKey(key);
-            console.log(privateKey);
+            log(privateKey);
             //console.time("RSA");
             const decryptedData = this.decryptMergedData(privateKey, mergedDataArray);
             //console.timeEnd("RSA");
             return Buffer.from(decryptedData).toString();
         } catch (error) {
-            console.error("解密过程中发生错误:", error);
+            logError("解密过程中发生错误:", error);
             throw error;
         }
     },
@@ -398,7 +399,7 @@ export const RSA2 = {
             //console.timeEnd("RSA加密");
             return encryptedBase64;
         } catch (error) {
-            console.error("加密过程中发生错误:", error);
+            logError("加密过程中发生错误:", error);
             throw error;
         }
     }
