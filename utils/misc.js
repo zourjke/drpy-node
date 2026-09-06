@@ -1,3 +1,4 @@
+import {log} from './log.js';
 /**
  * 杂项工具函数模块
  * 
@@ -288,7 +289,7 @@ export function jsonParse(input, json) {
             url: url,
         };
     } catch (error) {
-        console.log(error);
+        log(error);
     }
     return {};
 }
