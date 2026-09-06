@@ -4,6 +4,7 @@
  * @module proxy-util
  */
 
+import {log, logWarn} from './log.js';
 import {ENV} from './env.js';
 import https from 'https';
 import http from 'http';
@@ -23,6 +24,9 @@ export const PROXY_CONSTANTS = {
     HEAD_REQUEST_TIMEOUT: 5000,
     // 内容获取超时时间（15秒）
     CONTENT_FETCH_TIMEOUT: 15000,
+    // 流式转发空闲超时（60秒）：resolve 后若上游持续无任何数据则销毁连接，
+    // 防止半开 TCP 连接与其 socket 无限悬挂 (L9)
+    STREAM_IDLE_TIMEOUT: 60000,
     // 最大内容长度（10MB）
     MAX_CONTENT_LENGTH: 10 * 1024 * 1024,
     // 默认User-Agent
@@ -41,6 +45,24 @@ export const PROXY_CONSTANTS = {
         MEMORY_PRESSURE_THRESHOLD: 5000
     }
 };
+
+// 所有 SmartCacheManager 实例共享同一个 process 'exit' 钩子 (L17)：
+// 一次性注册，进程退出时统一停掉各实例的清理定时器
+const smartCacheInstances = new Set();
+let smartCacheExitHooked = false;
+
+function registerSmartCacheInstance(instance) {
+    smartCacheInstances.add(instance);
+    if (smartCacheExitHooked) return;
+    smartCacheExitHooked = true;
+    process.once('exit', () => {
+        for (const inst of smartCacheInstances) {
+            try {
+                inst.stopCleanupTimer();
+            } catch {}
+        }
+    });
+}
 
 /**
  * 智能缓存管理器
@@ -69,8 +91,12 @@ export class SmartCacheManager {
         
         // 启动定期清理任务
         this.startCleanupTimer();
-        
-        // console.log(`[${this.name}] SmartCacheManager initialized: maxSize=${this.maxSize}, defaultTTL=${this.defaultTTL}ms`);
+
+        // L17：退出钩子由模块级共享单例承担（原实现每个实例各注册一个
+        // process.on('exit')，实例数逼近 10 即触发 MaxListenersExceededWarning）
+        registerSmartCacheInstance(this);
+
+        // log(`[${this.name}] SmartCacheManager initialized: maxSize=${this.maxSize}, defaultTTL=${this.defaultTTL}ms`);
     }
     
     /**
@@ -105,7 +131,7 @@ export class SmartCacheManager {
         
         // 内存压力检查
         if (this.cache.size > PROXY_CONSTANTS.CACHE_MANAGER.MEMORY_PRESSURE_THRESHOLD) {
-            console.warn(`[${this.name}] Memory pressure detected: ${this.cache.size} items, triggering aggressive cleanup`);
+            logWarn(`[${this.name}] Memory pressure detected: ${this.cache.size} items, triggering aggressive cleanup`);
             this._aggressiveCleanup();
         }
     }
@@ -172,7 +198,7 @@ export class SmartCacheManager {
         const size = this.cache.size;
         this.cache.clear();
         this.accessOrder.clear();
-        console.log(`[${this.name}] Cache cleared: ${size} items removed`);
+        log(`[${this.name}] Cache cleared: ${size} items removed`);
     }
     
     /**
@@ -219,15 +245,10 @@ export class SmartCacheManager {
         this.cleanupTimer = setInterval(() => {
             this._performCleanup();
         }, this.cleanupInterval);
-        
+
         // 允许进程在定时器存在时退出
         if (this.cleanupTimer.unref) {
             this.cleanupTimer.unref();
-        }
-        
-        // 确保进程退出时清理定时器
-        if (typeof process !== 'undefined') {
-            process.on('exit', () => this.stopCleanupTimer());
         }
     }
     
@@ -261,7 +282,7 @@ export class SmartCacheManager {
         if (expiredCount > 0) {
             this.stats.expirations += expiredCount;
             this.stats.cleanups++;
-            console.log(`[${this.name}] Cleanup completed: ${expiredCount} expired items removed (${before} -> ${this.cache.size})`);
+            log(`[${this.name}] Cleanup completed: ${expiredCount} expired items removed (${before} -> ${this.cache.size})`);
         }
     }
     
@@ -285,7 +306,7 @@ export class SmartCacheManager {
         
         if (removedCount > 0) {
             this.stats.evictions += removedCount;
-            console.log(`[${this.name}] Aggressive cleanup: ${removedCount} items evicted`);
+            log(`[${this.name}] Aggressive cleanup: ${removedCount} items evicted`);
         }
     }
     
@@ -385,7 +406,7 @@ export function decodeParam(param, isJson = false) {
         try {
             return JSON.parse(decoded);
         } catch (e) {
-            console.warn('Failed to parse headers as JSON:', decoded);
+            logWarn('Failed to parse headers as JSON:', decoded);
             return {};
         }
     }
@@ -460,7 +481,14 @@ export function makeRemoteRequest(url, headers, method = 'GET', range = null, ti
             const req = httpModule.request(options, (res) => {
                 if (isResolved) return;
                 isResolved = true;
-                
+
+                // L9：req.on('timeout') 只覆盖响应头等待阶段，resolve 之后不再生效；
+                // socket timeout 是空闲语义（任何数据活动自动重置），借此为流式转发
+                // 阶段补上"持续无数据才销毁"的 watchdog。
+                res.setTimeout(PROXY_CONSTANTS.STREAM_IDLE_TIMEOUT, () => {
+                    res.destroy(new Error('Stream idle timeout'));
+                });
+
                 resolve({
                     statusCode: res.statusCode,
                     headers: res.headers,
@@ -527,11 +555,13 @@ export function getRemoteContent(url, headers) {
             }, PROXY_CONSTANTS.CONTENT_FETCH_TIMEOUT);
             
             const response = await makeRemoteRequest(url, headers, 'GET');
-            
+
             if (response.statusCode >= 400) {
                 if (isResolved) return;
                 isResolved = true;
                 clearTimeout(timeoutId);
+                // 未消费的响应体直接断流，避免连接占到上游自然结束 (L22)
+                response.stream.destroy?.();
                 reject(new Error(`Remote server error: ${response.statusCode}`));
                 return;
             }
@@ -541,15 +571,17 @@ export function getRemoteContent(url, headers) {
             
             response.stream.on('data', chunk => {
                 if (isResolved) return;
-                
+
                 contentLength += chunk.length;
                 if (contentLength > PROXY_CONSTANTS.MAX_CONTENT_LENGTH) {
                     isResolved = true;
                     clearTimeout(timeoutId);
+                    // 超限立即断流，不再继续下载剩余 body (L22)
+                    response.stream.destroy?.();
                     reject(new Error('Content too large'));
                     return;
                 }
-                
+
                 content += chunk.toString('utf8');
             });
 
