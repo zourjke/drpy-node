@@ -1,3 +1,4 @@
+import {logError} from '../utils/log.js';
 import fileHeaderManager from "../utils/fileHeaderManager.js";
 import {base64Decode, base64Encode} from "./crypto-util.js";
 import './pako.min.js';
@@ -22,7 +23,7 @@ export const IOS_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) 
 
 // 配置常量
 export const RULE_CK = 'cookie'; // 源cookie的key值
-export const CATE_EXCLUDE = '首页|留言|APP|下载|资讯|新闻|动态';
+export const CATE_EXCLUDE = '首页|留言|APP|下载|资讯|动态'; // 不含「新闻」：误杀正常源的新闻类分类（如央视源）
 export const TAB_EXCLUDE = '猜你|喜欢|下载|剧情|榜|评论';
 export const OCR_RETRY = 3; // ocr验证重试次数
 export const OCR_API = 'https://api.nn.ci/ocr/b64/text'; // ocr在线识别接口
@@ -1053,7 +1054,7 @@ export function strExtract(content, pattern, groupIndex = 0) {
 
         return '';
     } catch (error) {
-        console.error('strExtract error:', error);
+        logError('strExtract error:', error);
         return '';
     }
 }
