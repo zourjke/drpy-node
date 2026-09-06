@@ -1,3 +1,4 @@
+import {logError} from '../utils/log.js';
 /*
     @license
     crypto-js-wasm v1.1.1
@@ -6290,7 +6291,7 @@
 
     imports.wbg.__wbg_error_09919627ac0992f5 = function (arg0, arg1) {
       try {
-        console.error(getStringFromWasm0(arg0, arg1));
+        logError(getStringFromWasm0(arg0, arg1));
       } finally {
         wasm.__wbindgen_free(arg0, arg1);
       }
@@ -6794,7 +6795,7 @@
       try {
         result = this.RsaPrivate.decrypt(msgEncrypted, this.encryptPadding, this.hashAlgo);
       } catch (e) {
-        console.error('Error occurred when decrypting: ', e);
+        logError('Error occurred when decrypting: ', e);
         return null;
       }
 
