@@ -9,56 +9,61 @@ import vm from 'vm';
 import { execFile } from 'child_process';
 import util from 'util';
 import { PROJECT_ROOT } from '../../utils/pathHelper.js';
+import {safePath} from '../../utils/pathGuard.js';
+
+// P3：源路径工具与引擎映射收敛至 utils/sourceState.js（本文件保持 re-export 兼容既有引用）
+import {SOURCE_ENGINES, validateSourceFilename, matchSourceEngine, removeDisabledPaths, setSourcesEnabled as applySourcesEnabled, getDisabledSet, regenerateIndexAsync} from '../../utils/sourceState.js';
+import {resolveFlowTarget, runVerifyFlow} from '../../utils/sourceVerify.js';
 
 const execFileAsync = util.promisify(execFile);
 
-// 列出所有源
+// 兼容既有引用（tests/unit/source-upload.test.js 等）：工具实现已迁 utils/sourceState.js
+export {SOURCE_ENGINES, validateSourceFilename, matchSourceEngine};
+
+// 列出所有源（附 disabled 全量路径清单，前端据此渲染每行的启用/停用状态）
 export async function listSources(req, reply) {
     try {
-        const jsPath = path.join(PROJECT_ROOT, 'spider/js');
-        const catvodPath = path.join(PROJECT_ROOT, 'spider/catvod');
-        const phpPath = path.join(PROJECT_ROOT, 'spider/php');
-        const pyPath = path.join(PROJECT_ROOT, 'spider/py');
-
-        let jsSources = [];
-        let catvodSources = [];
-        let phpSources = [];
-        let pySources = [];
-
-        if (await fs.pathExists(jsPath)) {
-            jsSources = (await fs.readdir(jsPath))
-                .filter(f => f.endsWith('.js') && !f.startsWith('_'))
-                .sort();
+        const result = {};
+        for (const [engine, cfg] of Object.entries(SOURCE_ENGINES)) {
+            const dir = path.join(PROJECT_ROOT, cfg.dir);
+            result[engine] = await fs.pathExists(dir)
+                ? (await fs.readdir(dir)).filter(f => f.endsWith(cfg.ext) && !f.startsWith('_')).sort()
+                : [];
         }
-
-        if (await fs.pathExists(catvodPath)) {
-            catvodSources = (await fs.readdir(catvodPath))
-                .filter(f => f.endsWith('.js') && !f.startsWith('_'))
-                .sort();
-        }
-
-        if (await fs.pathExists(phpPath)) {
-            phpSources = (await fs.readdir(phpPath))
-                .filter(f => f.endsWith('.php') && !f.startsWith('_'))
-                .sort();
-        }
-
-        if (await fs.pathExists(pyPath)) {
-            pySources = (await fs.readdir(pyPath))
-                .filter(f => f.endsWith('.py') && !f.startsWith('_'))
-                .sort();
-        }
-
-        return reply.send({
-            js: jsSources,
-            catvod: catvodSources,
-            php: phpSources,
-            py: pySources
-        });
+        result.disabled = [...getDisabledSet()].sort();
+        return reply.send(result);
     } catch (e) {
         reply.code(500).send({
             error: e.message
         });
+    }
+}
+
+/**
+ * POST /api/admin/sources/enabled  { paths: string[], enabled: boolean }
+ * 单个与批量共用端点（单操作 = 单元素数组）；写盘成功后异步重建 index.json/custom.json
+ */
+export async function setSourcesEnabled(req, reply) {
+    try {
+        if (process.env.READ_ONLY_MODE === '1') {
+            return reply.code(403).send({success: false, error: '系统当前处于只读模式，禁止修改源'});
+        }
+        const {paths, enabled} = req.body || {};
+        if (!Array.isArray(paths) || paths.length === 0) {
+            return reply.code(400).send({success: false, error: 'paths 必须为非空数组'});
+        }
+        if (typeof enabled !== 'boolean') {
+            return reply.code(400).send({success: false, error: 'enabled 必须为布尔值'});
+        }
+        if (paths.length > 200) {
+            return reply.code(400).send({success: false, error: '单次最多操作 200 个源'});
+        }
+        const r = applySourcesEnabled(paths, enabled);
+        if (r.updated > 0) regenerateIndexAsync(); // 异步重建缓存配置，失败不影响本次响应
+        return reply.send({success: true, data: {updated: r.updated, skipped: r.skipped}});
+    } catch (e) {
+        req.log.error('设置源启用状态失败:', e);
+        reply.code(500).send({success: false, error: e.message});
     }
 }
 
@@ -172,7 +177,7 @@ export async function validateSpider(req, reply) {
     }
 }
 
-// 检查语法
+// 检查语法（控制器壳：路径校验后委托 syntaxCheckFile；错误统一 400 + isValid:false）
 export async function checkSyntax(req, reply) {
     try {
         const { path: filePath } = req.body;
@@ -184,68 +189,149 @@ export async function checkSyntax(req, reply) {
             });
         }
 
-        const fullPath = path.join(PROJECT_ROOT, filePath);
-        
-        // PHP 语法检查
-        if (filePath.endsWith('.php')) {
-            try {
-                await execFileAsync('php', ['-l', fullPath]);
-                return reply.send({
-                    isValid: true,
-                    message: 'PHP 语法检查通过'
-                });
-            } catch (e) {
-                return reply.code(400).send({
-                    isValid: false,
-                    error: `PHP 语法错误: ${e.message}`
-                });
-            }
-        }
-
-        // Python 语法检查
-        if (filePath.endsWith('.py')) {
-            try {
-                await execAsync(`python -m py_compile "${fullPath}"`);
-                return reply.send({
-                    isValid: true,
-                    message: 'Python 语法检查通过'
-                });
-            } catch (e) {
-                return reply.code(400).send({
-                    isValid: false,
-                    error: `Python 语法错误: ${e.message}`
-                });
-            }
-        }
-
-        let code = await fs.readFile(fullPath, 'utf-8');
-
-        // 如果是 JS 文件，尝试解码
-        if (filePath.endsWith('.js')) {
-            try {
-                const { decodeDsSource } = await import('../../utils/dsHelper.js');
-                code = await decodeDsSource(code);
-            } catch (e) {
-                // 解码失败，使用原始代码
-            }
-        }
-
-        try {
-            new vm.Script(code);
-            return reply.send({
-                isValid: true,
-                message: '语法检查通过'
-            });
-        } catch (e) {
+        if (!await fs.pathExists(path.join(PROJECT_ROOT, filePath))) {
             return reply.code(400).send({
                 isValid: false,
-                error: `语法错误: ${e.message}`
+                error: '文件不存在'
             });
         }
+
+        return reply.send(await syntaxCheckFile(filePath));
     } catch (e) {
-        reply.code(500).send({
-            error: e.message
+        reply.code(400).send({
+            isValid: false,
+            error: `语法错误: ${e.message}`
         });
+    }
+}
+
+/**
+ * 语法检查核心（供 checkSyntax 与上传后自动校验共用）：
+ * .php → php -l；.py → python -m py_compile；.js → 解码后 vm 编译检查
+ * @returns {Promise<{isValid: true, message: string}>} 失败时抛出异常（message 含原因）
+ */
+async function syntaxCheckFile(filePath) {
+    const fullPath = path.join(PROJECT_ROOT, filePath);
+
+    if (filePath.endsWith('.php')) {
+        await execFileAsync('php', ['-l', fullPath]);
+        return {isValid: true, message: 'PHP 语法检查通过'};
+    }
+
+    if (filePath.endsWith('.py')) {
+        // fix: 原 execAsync 从未定义（恒抛 ReferenceError 被吞成语法错误），
+        // 与 PHP 检查统一使用 execFileAsync，避免 shell 注入面
+        await execFileAsync('python', ['-m', 'py_compile', fullPath]);
+        return {isValid: true, message: 'Python 语法检查通过'};
+    }
+
+    let code = await fs.readFile(fullPath, 'utf-8');
+
+    if (filePath.endsWith('.js')) {
+        try {
+            const { decodeDsSource } = await import('../../utils/dsHelper.js');
+            code = await decodeDsSource(code);
+        } catch (e) {
+            // 解码失败，使用原始代码
+        }
+    }
+
+    new vm.Script(code);
+    return {isValid: true, message: '语法检查通过'};
+}
+
+/**
+ * POST /api/admin/sources/upload
+ * 上传源文件（JSON body 文本 content，路由级 bodyLimit 5MB）。
+ * 落盘后自动语法校验（fail-soft：校验失败仍保留文件，响应 check.ok=false 由用户决定修改或删除）
+ */
+export async function uploadSource(req, reply) {
+    try {
+        if (process.env.READ_ONLY_MODE === '1') {
+            return reply.code(403).send({success: false, error: '系统当前处于只读模式，禁止修改源'});
+        }
+        const { engine, filename, content, overwrite } = req.body || {};
+
+        const v = validateSourceFilename(engine, filename);
+        if (!v.ok) return reply.code(400).send({success: false, error: v.error});
+
+        if (typeof content !== 'string' || content.length === 0) {
+            return reply.code(400).send({success: false, error: '源文件内容不能为空'});
+        }
+        if (content.length > 5 * 1024 * 1024) {
+            return reply.code(413).send({success: false, error: '源文件内容超过 5MB 上限'});
+        }
+
+        const cfg = SOURCE_ENGINES[engine];
+        const rel = `${cfg.dir}/${v.name}`;
+        // safePath 终检（双层防护的第二层，见 docs/upload-design.md §6）
+        if (!isSafePath(rel)) {
+            return reply.code(403).send({success: false, error: '目标路径未通过安全校验'});
+        }
+
+        const abs = path.join(PROJECT_ROOT, cfg.dir, v.name);
+        if (await fs.pathExists(abs) && overwrite !== true) {
+            return reply.code(409).send({success: false, error: `同名源已存在: ${v.name}`, data: {exists: true}});
+        }
+
+        await fs.writeFile(abs, content, 'utf-8');
+
+        let check = {ok: true, message: '未执行校验'};
+        try {
+            const r = await syntaxCheckFile(rel);
+            check = {ok: r.isValid, message: r.message};
+        } catch (e) {
+            check = {ok: false, message: e.message};
+        }
+
+        return reply.send({success: true, data: {path: rel, engine, check}});
+    } catch (e) {
+        reply.code(500).send({success: false, error: e.message});
+    }
+}
+
+/**
+ * POST /api/admin/sources/delete  { path }
+ * 仅允许删除源目录白名单内的单个源文件（防借道删除项目其他文件）
+ */
+export async function deleteSource(req, reply) {
+    try {
+        if (process.env.READ_ONLY_MODE === '1') {
+            return reply.code(403).send({success: false, error: '系统当前处于只读模式，禁止修改源'});
+        }
+        const { path: relPath } = req.body || {};
+        const m = matchSourceEngine(relPath);
+        if (!m) {
+            return reply.code(403).send({
+                success: false,
+                error: '仅允许删除源目录（spider/js、js_dr2、catvod、php、py）内的文件'
+            });
+        }
+        const cfg = SOURCE_ENGINES[m.engine];
+        const name = m.name;
+        // 仅单文件：不含子路径段（'/' 挡住 spider/js/../../.env 类穿越），排除目录引用
+        if (!name || name.includes('/') || name === '..' || name === '.' || name.startsWith('_')) {
+            return reply.code(403).send({success: false, error: '仅允许删除源目录内的单个源文件'});
+        }
+        if (!name.endsWith(cfg.ext)) {
+            return reply.code(403).send({success: false, error: `${m.engine} 类型源仅支持删除 ${cfg.ext} 文件`});
+        }
+
+        const abs = path.join(PROJECT_ROOT, cfg.dir, name);
+        if (!await fs.pathExists(abs)) {
+            return reply.code(404).send({success: false, error: '源文件不存在'});
+        }
+        const stat = await fs.stat(abs);
+        if (!stat.isFile()) {
+            return reply.code(403).send({success: false, error: '目标不是文件，拒绝删除'});
+        }
+
+        await fs.unlink(abs);
+        removeDisabledPaths([`${cfg.dir}/${name}`]); // 联动清理停用列表残留
+        regenerateIndexAsync(); // 已删源不在新配置中，缓存配置同样需要重建
+        return reply.send({success: true, data: {path: `${cfg.dir}/${name}`, engine: m.engine}});
+    } catch (e) {
+        reply.code(500).send({success: false, error: e.message});
     }
 }
 
@@ -339,23 +425,53 @@ export async function getLibsInfo(req, reply) {
     return reply.send(info);
 }
 
-function isSafePath(filePath) {
-    if (!filePath || typeof filePath !== 'string') return false;
-    
-    // Prevent absolute paths from user input directly
-    if (path.isAbsolute(filePath)) return false;
+// P2：路径安全校验收敛至 utils/pathGuard.js（原为本文件内的重复实现）
+const isSafePath = safePath;
 
-    // Resolve full path and check if it is within CWD
-    const fullPath = path.resolve(PROJECT_ROOT, filePath);
-    const cwd = PROJECT_ROOT;
-    
-    // Ensure the resolved path is inside the current working directory
-    if (!fullPath.startsWith(cwd)) return false;
+// ==================== 接口全流程验证（docs/source-verify-design.md） ====================
 
-    // Blacklist check
-    const blacklist = ['node_modules', 'database.db', '.git', '.env'];
-    const relativePath = path.relative(cwd, fullPath);
-    if (blacklist.some(item => relativePath.includes(item))) return false;
+// 进程内单飞互斥：同一时间仅允许一个流程验证（步骤含真实外站请求，避免叠加）
+let flowVerifyRunning = false;
 
-    return true;
+/**
+ * POST /api/admin/sources/verify-flow
+ * 对单个源真实走一遍 首页→分类→详情→搜索（→可选播放）协议链路。
+ * 服务端自调用 http://127.0.0.1:{localPort}/api/{module}，pwd 取 process.env.API_PWD，不向前端暴露。
+ * 停用源同样可验证（验证是诊断工具，与启用/停用正交）。
+ */
+export async function verifySourceFlow(req, reply) {
+    const {path: relPath, options = {}} = req.body || {};
+    if (!relPath) {
+        return reply.code(400).send({success: false, error: '缺少源路径 path'});
+    }
+    const target = resolveFlowTarget(relPath);
+    if (!target.supported) {
+        return reply.code(400).send({success: false, error: target.reason});
+    }
+    if (flowVerifyRunning) {
+        return reply.code(409).send({success: false, error: '已有验证任务进行中，请稍后再试'});
+    }
+
+    flowVerifyRunning = true;
+    try {
+        const base = `http://127.0.0.1:${req.socket.localPort}`;
+        const pwd = process.env.API_PWD || '';
+        const data = await runVerifyFlow({
+            base,
+            moduleName: target.moduleName,
+            engine: target.engine,
+            doParam: target.doParam,
+            pwd,
+            searchKeyword: typeof options.searchKeyword === 'string' && options.searchKeyword.trim()
+                ? options.searchKeyword.trim() : '爱',
+            perStepTimeoutMs: options.perStepTimeoutMs,
+            verifyPlay: options.verifyPlay === true,
+        });
+        return reply.send({success: true, data: {module: target.moduleName, engine: target.engine, ...data}});
+    } catch (e) {
+        req.log.error('源流程验证失败:', e);
+        return reply.code(500).send({success: false, error: '流程验证失败: ' + e.message});
+    } finally {
+        flowVerifyRunning = false;
+    }
 }
