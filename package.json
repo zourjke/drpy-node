@@ -1,6 +1,6 @@
 {
     "name": "drpy-node",
-    "version": "2.0.6",
+    "version": "2.0.7",
     "main": "index.js",
     "type": "module",
     "scripts": {
@@ -21,6 +21,10 @@
         "packageJS-zip": "node package-clean.mjs -z",
         "packageJS-green-zip": "node package-clean.mjs -g -z",
         "package-bundle": "node package-bundle.js",
+        "package-server-bundle": "node package-clean.mjs -bundle",
+        "package-server-bundle-zip": "node package-clean.mjs -bundle -z",
+        "package-server-bundle-green": "node package-clean.mjs -bundle -g",
+        "package-server-bundle-min": "node package-clean.mjs -bundle -min",
         "gzip-1": "node controllers/encoder.js json/十六万歌曲.json",
         "ungzip-1": "node controllers/decoder.js json/十六万歌曲.json.gz",
         "moontv": "node scripts/mjs/moontv.mjs 采集2025.json -p",
@@ -88,7 +92,7 @@
     },
     "devDependencies": {
         "@anthropic-ai/mcpb": "^2.1.2",
-        "rolldown": "^1.0.0-rc.4"
+        "rolldown": "^1.3.1"
     },
     "optionalDependencies": {
         "node-pty": "^1.1.0"

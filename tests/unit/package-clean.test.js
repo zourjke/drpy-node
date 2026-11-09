@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import {shouldInclude, isExcludedSource, smokeCheck, collectDocClosure} from '../../package-clean.mjs';
+import {
+    shouldInclude, isExcludedSource, smokeCheck, collectDocClosure,
+    smokeCheckBundle, buildBundleStaging,
+} from '../../package-clean.mjs';
 
 // ==================== 白名单判定 shouldInclude ====================
 
@@ -102,6 +105,126 @@ test('smokeCheck: 缺 index.js / 混入 env.json、tests、dev 依赖被拦截',
         assert.ok(problems.some(p => p.includes('tests')));
         assert.ok(problems.some(p => p.includes('rolldown')));
     } finally {
+        fs.rmSync(staging, {recursive: true, force: true});
+    }
+});
+
+// ==================== bundle 模式：staging 自检 / 组装 ====================
+
+const BUNDLE_WRAPPER = "import {start} from './dist/server.bundle.mjs';\nstart();\n";
+
+function makeBundleFixture() {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pkg-bundle-'));
+    const write = (rel, content = '') => {
+        fs.mkdirSync(path.dirname(path.join(root, rel)), {recursive: true});
+        fs.writeFileSync(path.join(root, rel), content);
+    };
+    // 树版文件集最小骨架
+    write('index.js', '// tree entry');
+    write('package.json', '{"name":"drpy-node","type":"module"}');
+    write('README.md', '# demo');
+    write('utils/esm-register.mjs', '// register');
+    write('spider/js/demo.js', 'var rule={};');
+    write('config/market.json', '{}');
+    write('docs/changelog/v2.0.0.md', '# v2');
+    write('docs/openapi.json', '{}');
+    // bundle 产物
+    write('dist/server.bundle.mjs', 'export const start=()=>{};');
+    // -min 变体的 swagger-ui static 资产源（打包机 node_modules 形态）
+    write('node_modules/@fastify/swagger-ui/static/logo.svg', '<svg/>');
+    write('node_modules/@fastify/swagger-ui/static/swagger-ui-bundle.js', '/*ui*/');
+    return root;
+}
+
+test('smokeCheckBundle: 合法 bundle staging 通过（入口仍是 index.js）', () => {
+    const root = makeBundleFixture();
+    const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'pkg-bundle-stage-'));
+    try {
+        fs.cpSync(root, staging, {recursive: true});
+        fs.writeFileSync(path.join(staging, 'index.js'), BUNDLE_WRAPPER);
+        for (const p of ['@fastify/swagger-ui', 'ws', 'node-sqlite3-wasm', 'simplecc-wasm']) {
+            fs.mkdirSync(path.join(staging, 'node_modules', p), {recursive: true});
+        }
+        assert.deepEqual(smokeCheckBundle(staging), []);
+    } finally {
+        fs.rmSync(root, {recursive: true, force: true});
+        fs.rmSync(staging, {recursive: true, force: true});
+    }
+});
+
+test('smokeCheckBundle: 缺产物 / 非 wrapper 入口 / 混入 fastify / 根级 bundle 被拦截', () => {
+    const root = makeBundleFixture();
+    const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'pkg-bundle-bad-'));
+    try {
+        fs.cpSync(root, staging, {recursive: true});
+        fs.writeFileSync(path.join(staging, 'index.js'), '// 未替换的树版入口');
+        fs.rmSync(path.join(staging, 'dist', 'server.bundle.mjs'));
+        fs.mkdirSync(path.join(staging, 'node_modules', 'fastify'), {recursive: true});
+        fs.writeFileSync(path.join(staging, 'server.bundle.mjs'), '');
+        const problems = smokeCheckBundle(staging);
+        assert.ok(problems.some((p) => p.includes('server.bundle.mjs')));
+        assert.ok(problems.some((p) => p.includes('包装器')));
+        assert.ok(problems.some((p) => p.includes('fastify')));
+        assert.ok(problems.some((p) => p.includes('不应打包的内容: server.bundle.mjs')));
+    } finally {
+        fs.rmSync(root, {recursive: true, force: true});
+        fs.rmSync(staging, {recursive: true, force: true});
+    }
+});
+
+test('buildBundleStaging: 生成 wrapper + dist 产物，沿用树版白名单/排除规则', () => {
+    const root = makeBundleFixture();
+    // 排除项与控制用文件
+    fs.mkdirSync(path.join(root, 'config'), {recursive: true});
+    fs.writeFileSync(path.join(root, 'config', 'env.json'), '{}');
+    fs.mkdirSync(path.join(root, 'spider', 'js_bad'), {recursive: true});
+    fs.writeFileSync(path.join(root, 'spider', 'js_bad', 'x.js'), '');
+    fs.writeFileSync(path.join(root, 'spider', 'js', '私密[密].js'), '');
+    const staging = path.join(os.tmpdir(), `pkg-bundle-assemble-${process.pid}`);
+    try {
+        buildBundleStaging(root, staging, {green: true, installDeps: false});
+        // 入口被替换为 wrapper，产物在 dist/
+        const entry = fs.readFileSync(path.join(staging, 'index.js'), 'utf-8');
+        assert.match(entry, /from\s+['"]\.\/dist\/server\.bundle\.mjs['"]/);
+        assert.ok(fs.existsSync(path.join(staging, 'dist', 'server.bundle.mjs')));
+        // 伴生 loader 随 utils 文件集发行
+        assert.ok(fs.existsSync(path.join(staging, 'utils', 'esm-register.mjs')));
+        // 真实 package.json 覆盖 staging 临时 package.json
+        assert.match(fs.readFileSync(path.join(staging, 'package.json'), 'utf-8'), /drpy-node/);
+        // 白名单排除规则与树版一致
+        assert.ok(!fs.existsSync(path.join(staging, 'config', 'env.json')));
+        assert.ok(!fs.existsSync(path.join(staging, 'spider', 'js_bad')));
+        assert.ok(!fs.existsSync(path.join(staging, 'spider', 'js', '私密[密].js')));
+        // data 骨架
+        assert.ok(fs.existsSync(path.join(staging, 'data', 'settings', '.gitkeep')));
+    } finally {
+        fs.rmSync(root, {recursive: true, force: true});
+        fs.rmSync(staging, {recursive: true, force: true});
+    }
+});
+
+
+test('buildBundleStaging: min 变体双拷 swagger-ui static、依赖集裁到 3 家', () => {
+    const root = makeBundleFixture();
+    const staging = path.join(os.tmpdir(), `pkg-bundle-min-${process.pid}`);
+    try {
+        buildBundleStaging(root, staging, {min: true, installDeps: false});
+        // installDeps:false 跳过 npm，手动补 3 家运行时 external 占位
+        for (const p of ['ws', 'node-sqlite3-wasm', 'simplecc-wasm']) {
+            fs.mkdirSync(path.join(staging, 'node_modules', p), {recursive: true});
+        }
+        // 两份 static 资产：dist/static/（注册期读 csp.json+logo）+ 根级 static/（serve root）
+        assert.ok(fs.existsSync(path.join(staging, 'dist', 'static', 'logo.svg')));
+        assert.ok(fs.existsSync(path.join(staging, 'static', 'swagger-ui-bundle.js')));
+        // swagger-ui 不进 node_modules（内联进 bundle）
+        assert.ok(!fs.existsSync(path.join(staging, 'node_modules', '@fastify', 'swagger-ui')));
+        assert.deepEqual(smokeCheckBundle(staging, {min: true}), []);
+        // min 模式下磁盘再出现 swagger-ui 包 = 依赖集装错，被拦截
+        fs.mkdirSync(path.join(staging, 'node_modules', '@fastify', 'swagger-ui'), {recursive: true});
+        const problems = smokeCheckBundle(staging, {min: true});
+        assert.ok(problems.some((p) => p.includes('swagger-ui') && p.includes('不应打包')));
+    } finally {
+        fs.rmSync(root, {recursive: true, force: true});
         fs.rmSync(staging, {recursive: true, force: true});
     }
 });

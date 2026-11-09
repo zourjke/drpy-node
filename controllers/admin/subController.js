@@ -1,10 +1,9 @@
 import path from 'path';
 import fs from '../../utils/fsWrapper.js';
-import { fileURLToPath } from 'url';
+import { PROJECT_ROOT } from '../../utils/pathHelper.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const projectRootDir = path.resolve(__dirname, '../../');
+// 根路径统一走 pathHelper（bundle 版在 dist/ 单文件里，源码层级推导会错位）
+const projectRootDir = PROJECT_ROOT;
 const subDir = path.join(projectRootDir, 'public/sub');
 
 // Ensure sub directory exists

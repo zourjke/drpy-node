@@ -24,7 +24,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          # 仓库不提交 lock 文件（.gitignore /yarn.lock），setup-node 的
+          # cache 需要 lock 才能工作——v2.0.3 起每个 tag 都挂在这，勿加回
 
       - name: Install 7zip
         run: |
@@ -32,7 +33,9 @@ jobs:
           sudo apt-get install -y p7zip-full
 
       - name: Install dependencies
-        run: npm ci
+        # 无 lock 文件不能 npm ci；--omit=dev：树版打包只需生产依赖，
+        # devDeps（rolldown/@inquirer 等）会被 package-clean 的 staging 自检拦截
+        run: npm install --omit=dev --no-audit --no-fund
 
       - name: Run packageJS script
         run: npm run packageJS
@@ -40,43 +43,18 @@ jobs:
       - name: Run packageJS-green script
         run: npm run packageJS-green
 
-      - name: Find generated 7z files
-        run: |
-          # 在上级目录查找生成的 7z 文件
-          cd ..
-          echo "Generated files:"
-          ls -la *.7z || echo "No 7z files found"
-          # 将文件列表保存到环境变量中
-          echo "FILES=$(ls *.7z 2>/dev/null | tr '\n' ' ')" >> $GITHUB_ENV
-
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
+      # 资产在仓库上级目录（package-clean 的 staging 旁）；gh 需 -R 显式仓库
+      # （cwd 已脱离 git 仓库）。幂等：release 已存在则只补传资产（支持重跑/重推 tag）。
+      # 旧实现挂点：create-release@v1 已存在即失败；curl 拼 upload_url 带裸
+      # {?name,label} 后缀 + --data-binary 非 multipart，从未上传成功过
+      - name: Create release and upload 7z assets
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref_name }}
-          release_name: Release ${{ github.ref_name }}
-          draft: false
-          prerelease: false
-
-      - name: Upload Release Assets
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 切换到上级目录
           cd ..
-          # 上传所有找到的 7z 文件
-          for file in $FILES; do
-            echo "Uploading $file..."
-            curl -s \
-              -H "Authorization: token $GITHUB_TOKEN" \
-              -H "Content-Type: application/octet-stream" \
-              --data-binary @"$file" \
-              "${{ steps.create_release.outputs.upload_url }}?name=$file"
-            echo "Uploaded $file"
-          done
-
-      - name: Verify upload
-        run: |
-          echo "Uploaded files: $FILES"
+          if gh release view "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "release $GITHUB_REF_NAME 已存在，仅上传资产"
+            gh release upload "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" drpy-node-*.7z --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" drpy-node-*.7z --title "Release $GITHUB_REF_NAME"
+          fi

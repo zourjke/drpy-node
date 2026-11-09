@@ -209,6 +209,11 @@ const GLOBAL_STATIC_SANDBOX = {
     ...STATIC_LIBS_SANDBOX,
 };
 
+// bundle 出包前的沙箱全局自检入口（drpy-node-bundle/sandbox-check.mjs）：
+// 枚举「libs / custom」两张表，逐个 typeof 非 undefined，防止 UMD 全局挂载型
+// 模块在打包后丢全局（CryptoJS is not defined 类问题）。树版运行不受影响。
+export {STATIC_LIBS_SANDBOX, STATIC_DRPY_CUSTOM_SANDBOX, GLOBAL_STATIC_SANDBOX};
+
 // Precompiled Scripts
 const REQ_EXTEND_SCRIPT = new vm.Script(req_extend_code);
 const TEMPLATE_CHECK_FUNC_CODE = `

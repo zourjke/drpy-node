@@ -32,6 +32,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          # 根目录不提交 lock（.gitignore /yarn.lock），缓存锚到子项目的 lock
           cache-dependency-path: drpy-node-mcp/package-lock.json
 
       - name: Install root dependencies

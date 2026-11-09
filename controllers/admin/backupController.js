@@ -1,11 +1,11 @@
 import path from 'path';
 import fs from '../../utils/fsWrapper.js';
 import { copyPath } from '../../utils/backupCopy.js';
-import { fileURLToPath } from 'url';
+import { PROJECT_ROOT } from '../../utils/pathHelper.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const projectRootDir = path.resolve(__dirname, '../../');
+// 根路径统一走 pathHelper（支持 ROOT env 覆盖）：bundle 版启动图在 dist/ 单文件里，
+// 按源码层级（controllers/admin -> ../../）推导会错位；树版结果与原推导一致
+const projectRootDir = PROJECT_ROOT;
 
 const BACKUP_PATHS = [
     '.env',

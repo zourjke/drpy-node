@@ -9,9 +9,12 @@
  *   node package-clean.mjs -z            # zip 格式
  *   node package-clean.mjs -g            # 绿色包：spider/js 不带 [密] 私密源
  *   node package-clean.mjs --prod-install  # 生产依赖走安装式（默认裁剪式）
+ *   node package-clean.mjs -bundle       # bundle 版：单文件启动图 + 微型 node_modules（7z）
+ *   node package-clean.mjs -bundle -min  # bundle 极简目录变体：swagger-ui 内联，node_modules 只剩 3 家
+ *   压缩格式全部默认 7z（更小），加 -z 才出 zip——树版与 bundle 版语义一致
  */
 
-import {execSync} from 'child_process';
+import {execSync, execFileSync} from 'child_process';
 import {existsSync, readdirSync, statSync, mkdirSync, copyFileSync, rmSync, writeFileSync, readFileSync} from 'fs';
 import {join, basename, dirname, resolve, relative} from 'path';
 import {pathToFileURL, fileURLToPath} from 'url';
@@ -55,6 +58,187 @@ const SOURCE_EXCLUDES = [
 
 // -green 语义：任何文件名方括号内含「密」标记的私密内容不入分发包（覆盖 spider/json/jx 全部源目录）
 const GREEN_FILE_RE = /\[[^\]]*密[^\]]*\]/;
+
+// ==================== bundle 模式配置（-bundle） ====================
+
+// bundle 版根入口包装器：入口文件名/启动方式与树版完全一致（node index.js），
+// DsPlayer/用户侧零改动。产物放 dist/ 是有意的——启动图内所有模块按「源码在
+// 项目根下一级」推导 `__dirname/..`，单文件放 dist/ 才能让这些路径落回项目根。
+const BUNDLE_ENTRY = `// bundle 版入口：静态启动图在 dist/server.bundle.mjs（minify 单文件）。
+// 与树版 index.js 同名同启动方式（node index.js），服务配置/环境变量不变。
+import {start} from './dist/server.bundle.mjs';
+start();
+`;
+
+// bundle 版运行时 external 包（打不进单文件的 .wasm 资产包 + ws 的 CJS 形状 +
+// swagger-ui 按自身 __dirname 读 static 资产）。版本锁定为实测组合。
+// 坑：--no-save 追装会剪掉前面的包，必须一条 npm i 装齐。
+const BUNDLE_RUNTIME_DEPS = [
+    '@fastify/swagger-ui@4.2.0',
+    'ws@8.19.0',
+    'node-sqlite3-wasm@0.8.54',
+    'simplecc-wasm@1.1.0',
+];
+
+// -min 变体：swagger-ui 内联进 bundle，node_modules 只剩物理上打不进单文件的 3 家
+// （ws CJS 形状 + 两个 .wasm 资产包），顶层目录 54→3。
+// 代价：swagger-ui 的 static 资产要随包带两份（注册期按假 __dirname 读
+// dist/static/，serve root 拼 __dirname/../static 落根级 static/——hack 依赖
+// 包内部两种路径拼法，升级 @fastify/swagger-ui 后需复查文档页）。
+const BUNDLE_RUNTIME_DEPS_MIN = BUNDLE_RUNTIME_DEPS.filter((p) => !p.startsWith('@fastify/swagger-ui'));
+const SWAGGER_STATIC_SRC = ['node_modules', '@fastify', 'swagger-ui', 'static'];
+
+const BUNDLE_ENTRY_REL = 'dist/server.bundle.mjs';
+
+/** bundle 版 staging 自检（防呆）：入口/产物/微型依赖/运行时目录 + 禁止内容 */
+export function smokeCheckBundle(staging, {min = false} = {}) {
+    const problems = [];
+    // min：swagger-ui 内联（node_modules 不应再有），static 资产双份必须在
+    const mustExist = [
+        'index.js',
+        'package.json',
+        BUNDLE_ENTRY_REL,
+        join('utils', 'esm-register.mjs'),
+        join('node_modules', 'ws'),
+        join('node_modules', 'node-sqlite3-wasm'),
+        join('node_modules', 'simplecc-wasm'),
+        join('spider', 'js'),
+        join('config', 'market.json'),
+        join('docs', 'changelog'),
+        join('docs', 'openapi.json'),
+        ...(min
+            ? [join('dist', 'static', 'logo.svg'), join('static', 'swagger-ui-bundle.js')]
+            : [join('node_modules', '@fastify', 'swagger-ui')]),
+    ];
+    for (const p of mustExist) {
+        if (!existsSync(join(staging, p))) problems.push(`缺少必需内容: ${p}`);
+    }
+    // 入口必须还是 index.js，且指向 bundle 产物
+    try {
+        const entry = readFileSync(join(staging, 'index.js'), 'utf-8');
+        if (!/from\s+['"]\.\/dist\/server\.bundle\.mjs['"]/.test(entry)) {
+            problems.push('index.js 不是 bundle 包装器（未指向 ./dist/server.bundle.mjs）');
+        }
+    } catch {
+        // 缺失已在上方记录
+    }
+    const mustNotExist = [
+        join('config', 'env.json'),
+        join('config', 'source-states.json'),
+        '.env',
+        'tests',
+        'database.db',
+        join('node_modules', 'rolldown'),
+        // fastify 已打进 bundle；出现说明 npm 误把主工程全量依赖装进 staging
+        join('node_modules', 'fastify'),
+        // bundle 必须在 dist/（根级会破坏模块内 ../ 路径语义）
+        'server.bundle.mjs',
+        // min：swagger-ui 已内联，磁盘再出现说明装错了依赖集
+        ...(min ? [join('node_modules', '@fastify', 'swagger-ui')] : []),
+    ];
+    for (const p of mustNotExist) {
+        if (existsSync(join(staging, p))) problems.push(`不应打包的内容: ${p}`);
+    }
+    return problems;
+}
+
+function buildServerBundle(root, {min = false} = {}) {
+    execFileSync(process.execPath, [
+        join('node_modules', 'rolldown', 'dist', 'cli.mjs'),
+        '--config', join('drpy-node-bundle', 'rolldown.server.config.js'),
+    ], {
+        cwd: root,
+        stdio: 'inherit',
+        // -min：让 rolldown 配置把 swagger-ui 内联（见该配置 BUNDLE_INLINE_SWAGGER 注释）
+        env: min ? {...process.env, BUNDLE_INLINE_SWAGGER: '1'} : process.env,
+    });
+}
+
+function runSandboxCheck(root, staging) {
+    const checkFile = 'sandbox-check.bundle.mjs';
+    const dest = join(staging, 'dist', checkFile);
+    copyFileSync(join(root, 'dist', checkFile), dest);
+    try {
+        execFileSync(process.execPath, [join('dist', checkFile)], {cwd: staging, stdio: 'inherit'});
+    } finally {
+        rmSync(dest, {force: true});
+    }
+}
+
+/**
+ * bundle 版 staging 组装：干净独立目录 + 与树版完全相同的文件集 + 微型 node_modules。
+ * 注意必须从仓库外的独立目录组装——仓库根 node_modules 的向上解析会掩盖缺包。
+ * min：swagger-ui 内联版——依赖集裁到 3 家，另拷两份 swagger-ui static 资产。
+ */
+export function buildBundleStaging(root, staging, {green = false, installDeps = true, min = false} = {}) {
+    if (existsSync(staging)) rmSync(staging, {recursive: true, force: true});
+    mkdirSync(staging, {recursive: true});
+
+    // 1) 微型 node_modules：先放极简 package.json，避免 npm 把主工程全量依赖装进来
+    writeFileSync(join(staging, 'package.json'), '{"name":"drpy-node-bundle-stage","private":true,"version":"0.0.0"}\n');
+    if (installDeps) {
+        // --prefer-offline：打包机重复出包时直接吃缓存，避开 registry 抖动；
+        // 缓存没有的包仍会联网（版本已精确锁定）
+        const deps = (min ? BUNDLE_RUNTIME_DEPS_MIN : BUNDLE_RUNTIME_DEPS).join(' ');
+        execSync(`npm install --omit=dev --no-save --no-audit --no-fund --no-package-lock --prefer-offline ${deps}`, {
+            cwd: staging,
+            stdio: 'inherit',
+        });
+    }
+
+    // 2) 与树版完全相同的文件集（白名单 + 排除规则 + green 语义，见 copyReleaseFiles）
+    copyReleaseFiles(root, staging, {green});
+
+    // 3) 单文件启动图 + 根入口包装器（覆盖树版 index.js）；伴生 esm-register.mjs
+    //    已在 utils/ 文件集中（bundle 内引用 ../utils/esm-register.mjs）
+    mkdirSync(join(staging, 'dist'), {recursive: true});
+    copyFileSync(join(root, 'dist', 'server.bundle.mjs'), join(staging, 'dist', 'server.bundle.mjs'));
+    writeFileSync(join(staging, 'index.js'), BUNDLE_ENTRY);
+
+    // min：swagger-ui 已内联，其 static 资产按包内两种路径拼法各放一份
+    //（dist/static/ 供注册期读 csp.json+logo，根级 static/ 供 @fastify/static serve）
+    if (min) {
+        const staticSrc = join(root, ...SWAGGER_STATIC_SRC);
+        if (!existsSync(staticSrc)) {
+            throw new Error(`-min 需要 ${SWAGGER_STATIC_SRC.join('/')}（打包机 node_modules 未安装 @fastify/swagger-ui）`);
+        }
+        copyDir(staticSrc, join(staging, 'dist', 'static'));
+        copyDir(staticSrc, join(staging, 'static'));
+    }
+
+    // 4) 真实 package.json 覆盖（controllers/web.js 读取 name/version）
+    copyFileSync(join(root, 'package.json'), join(staging, 'package.json'));
+    return staging;
+}
+
+function runBundlePackage(root, {green, date, min = false, useZip = false}) {
+    const variant = `${green ? '-green' : ''}-bundle${min ? '-min' : ''}`;
+    const staging = resolve(root, '..', `drpy-node-staging-${date}${variant}`);
+    const archiveName = `drpy-node-${date}${variant}${useZip ? '.zip' : '.7z'}`;
+    const archivePath = resolve(root, '..', archiveName);
+
+    console.log(`[package-clean] bundle${min ? '-min' : ''} 模式：构建 server.bundle.mjs + sandbox-check.bundle.mjs`);
+    buildServerBundle(root, {min});
+
+    console.log(`[package-clean] staging: ${staging}`);
+    buildBundleStaging(root, staging, {green, min});
+
+    // 出包前硬门：bundle 上下文 + 干净 staging（只有微型 node_modules）跑沙箱全局自检
+    console.log('[package-clean] 沙箱全局自检 ...');
+    runSandboxCheck(root, staging);
+
+    const problems = smokeCheckBundle(staging, {min});
+    if (problems.length > 0) {
+        console.error('[package-clean] bundle staging 自检未通过:');
+        for (const p of problems) console.error('  - ' + p);
+        process.exit(1);
+    }
+
+    console.log(`[package-clean] 压缩: ${archivePath}`);
+    pack(staging, archivePath, useZip);
+    rmSync(staging, {recursive: true, force: true});
+    console.log(`[package-clean] 完成: ${archivePath}`);
+}
 
 // ==================== 可测纯函数 ====================
 
@@ -179,12 +363,10 @@ export function resolveProdDirs(root) {
 }
 
 /**
- * staging 组装
+ * 发行文件集复制（树版 / bundle 版共用，单一事实源）：
+ * 根级单文件 + 整目录白名单 + README 文档闭包子路径 + data 骨架
  */
-export function buildStaging(root, staging, {green = false, prodDirs} = {}) {
-    if (existsSync(staging)) rmSync(staging, {recursive: true, force: true});
-    mkdirSync(staging, {recursive: true});
-
+function copyReleaseFiles(root, staging, {green = false} = {}) {
     for (const file of ROOT_FILES) {
         if (existsSync(join(root, file))) copyFileSync(join(root, file), join(staging, file));
     }
@@ -210,6 +392,15 @@ export function buildStaging(root, staging, {green = false, prodDirs} = {}) {
         mkdirSync(dir, {recursive: true});
         writeFileSync(join(dir, '.gitkeep'), '');
     }
+}
+
+/**
+ * staging 组装
+ */
+export function buildStaging(root, staging, {green = false, prodDirs} = {}) {
+    if (existsSync(staging)) rmSync(staging, {recursive: true, force: true});
+    mkdirSync(staging, {recursive: true});
+    copyReleaseFiles(root, staging, {green});
 
     // node_modules 生产集
     const nmDirs = prodDirs || resolveProdDirs(root);
@@ -235,10 +426,20 @@ function main() {
     const green = args.includes('-g') || args.includes('--green');
     const useZip = args.includes('-z') || args.includes('--zip');
     const prodInstall = args.includes('--prod-install');
+    const bundle = args.includes('-bundle') || args.includes('--bundle');
+    const min = args.includes('-min') || args.includes('--min');
 
     // 本地日期（toISOString 走 UTC，晚间打包日期会差一天）
     const now = new Date();
     const date = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+
+    // bundle 版：单文件启动图 + 微型 node_modules；压缩格式与树版同语义（默认 7z，-z 出 zip）
+    // -min：swagger-ui 内联变体（node_modules 顶层 54→3，代价见 BUNDLE_RUNTIME_DEPS_MIN 注释）
+    if (bundle) {
+        runBundlePackage(root, {green, date, min, useZip});
+        return;
+    }
+
     const staging = resolve(root, '..', `drpy-node-staging-${date}${green ? '-green' : ''}`);
     const archiveName = `drpy-node-${date}${green ? '-green' : ''}${useZip ? '.zip' : '.7z'}`;
     const archivePath = resolve(root, '..', archiveName);

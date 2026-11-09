@@ -75,6 +75,15 @@ nodejs作为服务端的drpy实现。全面升级异步写法
 
 ## 更新记录
 
+### 20261110
+
+更新至V2.0.7
+
+1. 新增 bundle 版标准打包产物（`npm run package-server-bundle`，或 `package-clean.mjs -bundle [-min] [-z]`）：启动图 minify 单文件 + 微型 node_modules，解压即用、入口/命令/配置与树版一致；Android(FUSE) 冷启动 boot→listen 实测 6.94s→3.0s；`-min` 变体内联 swagger-ui（node_modules 顶层 54→3）；产物默认 7z，min 档 27MB
+2. bundle 构建链沉淀七坑修法与 8 个 UMD 全局 shim（CryptoJS/JSEncrypt/pako 等，修复沙箱 CryptoJS is not defined），出包自带 97 项沙箱全局自检硬门；根路径统一 pathHelper.PROJECT_ROOT
+3. php 源代理能力统一：BaseSpider getProxyUrl() + localProxy 注入、php -S 自感知；修复 php 源大响应缓冲上限与 py BaseSpider 构造期 self.log 虚分发中断
+4. 修复 push_agent 推送网页链接改为交壳子嗅探播放；资源管理源 100w 数据与根目录识别优化；alist 关闭 gzip；去掉央视直播推荐
+
 ### 20260925b
 
 更新至V2.0.6
