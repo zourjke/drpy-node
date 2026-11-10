@@ -28,6 +28,7 @@ import {base64Decode, base64Encode, md5, rc4, rc4_decode, rc4Decrypt, rc4Encrypt
 import template from '../libs_drpy/template.js'
 import batchExecute from '../libs_drpy/batchExecute.js';
 import '../libs_drpy/drpyInject.js'
+import {ruleAls, ruleProxyOf, ruleFetchDispatcher, currentRule} from '../utils/rule-proxy.js';
 import {
     MOBILE_UA, PC_UA, UA, UC_UA, IOS_UA,
     RULE_CK, CATE_EXCLUDE, TAB_EXCLUDE, OCR_RETRY, OCR_API, nodata, SPECIAL_URL,
@@ -59,7 +60,20 @@ import '../libs_drpy/es6-extend.js';
 
 globalThis.JSONbig = JSONbig; // 抖音弹幕直播必须
 globalThis._ENV = process.env;
-globalThis._fetch = fetch;
+// 按源出站代理（rule-proxy）：源内 fetch 是原生实现（直连无代理概念），
+// 包一层在命中规则映射时挂 undici ProxyAgent dispatcher（ALS 取当前规则；
+// 未命中零开销透传原生 fetch）。源脚本经 _fetch 别名取用
+const __nativeFetch = fetch;
+globalThis._fetch = (...args) => {
+    const rp = ruleProxyOf();
+    const dispatcher = rp ? ruleFetchDispatcher(rp) : null;
+    // 未命中映射 / dispatcher 构建失败：零开销透传原生 fetch
+    if (!dispatcher) return __nativeFetch(...args);
+    // 复制而非改写调用方的 options 对象（源可能复用同一 headers 对象）
+    const opts = args[1] && typeof args[1] === 'object' ? {...args[1], dispatcher} : {dispatcher};
+    log(`[rule-proxy] ${currentRule() || '?'} → fetch ${rp}`);
+    return __nativeFetch(args[0], opts);
+};
 globalThis.JsonBig = JSONbig({storeAsString: true});
 globalThis.require = rootRequire;
 initializeGlobalDollar();
@@ -644,6 +658,14 @@ export async function isLoaded() {
  * @returns {Promise<any>} - 方法调用的返回值
  */
 async function invokeMethod(filePath, env, method, args = [], injectVars = {}) {
+    // 按源出站代理（rule-proxy）：ALS 携带当前规则脚本名，请求底层
+    // （drpyInject request / createAxiosAgent 拦截器）据此查映射分流；
+    // 映射文件热读，DsPlayer 站点开关即改即生效，无需重启服务
+    return ruleAls.run({rule: path.basename(String(filePath), '.js')}, () =>
+        invokeMethodInner(filePath, env, method, args, injectVars));
+}
+
+async function invokeMethodInner(filePath, env, method, args = [], injectVars = {}) {
     const moduleObject = await init(filePath, env); // 确保模块已初始化
     switch (method) {
         case 'get_rule':
@@ -977,11 +999,14 @@ export async function getRule(filePath, env) {
 export async function jx(filePath, env, params) {
     params = params || {};
     try {
-        const jxObj = await initJx(filePath, env); // 确保模块已初始化
-        const lazy = await jxObj.lazy;
-        const result = await lazy(params.url || '', params);
-        // log(`[jx]: ${JSON.stringify(result)}`);
-        return result;
+        // 按源出站代理：解析脚本内的请求同样随规则映射分流（同 invokeMethod）
+        return await ruleAls.run({rule: path.basename(String(filePath), '.js')}, async () => {
+            const jxObj = await initJx(filePath, env); // 确保模块已初始化
+            const lazy = await jxObj.lazy;
+            const result = await lazy(params.url || '', params);
+            // log(`[jx]: ${JSON.stringify(result)}`);
+            return result;
+        });
     } catch (e) {
         return {code: 404, url: '', msg: `${filePath} 代理解析错误:${e.message}`, cost: ''}
     }

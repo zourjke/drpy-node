@@ -7,6 +7,7 @@ import FormData from 'form-data';
 import https from "https";
 import diagnosticsChannel from 'diagnostics_channel';
 import {resolveDoh, getSystemProxy} from '../utils/dns_doh.js';
+import {ruleProxyOf} from '../utils/rule-proxy.js';
 import {ProxyAgent, Agent} from 'undici';
 
 let undiciStripUASubscribed = false;
@@ -185,7 +186,10 @@ class FetchAxios {
         // Proxy and DOH Handling
         let fetchDispatcher = null;
         try {
-            const proxy = await getSystemProxy();
+            // 按源出站代理（rule-proxy，DsPlayer 站点开关映射）优先：
+            // 命中时 proxy=映射地址 → ProxyAgent 直指 mihomo（代理端负责
+            // DNS，proxy 为真自然跳过下方 DOH 分支）；未命中维持原链路
+            const proxy = ruleProxyOf() ?? await getSystemProxy();
             // L7：按代理地址复用 Agent 单例，替代逐请求新建
             fetchDispatcher = getFetchDispatcher(proxy);
             if (!proxy) {

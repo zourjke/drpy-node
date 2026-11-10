@@ -4,6 +4,7 @@ import https from 'https';
 import axios from 'axios';
 import {getSystemProxy, resolveDoh} from './dns_doh.js';
 import {HttpsProxyAgent} from 'https-proxy-agent';
+import {resolveRuleProxyAgent} from './rule-proxy.js';
 
 /**
  * 创建配置了代理的 axios 实例
@@ -66,6 +67,19 @@ export function createAxiosInstance(options = {}) {
                     break;
                 }
             }
+        }
+
+        // 按源出站代理（rule-proxy，DsPlayer 站点开关映射）优先；
+        // 命中即整请求交给 mihomo（代理端负责 DNS），未命中回落系统代理/DOH
+        const rpa = resolveRuleProxyAgent(config.url);
+        if (rpa) {
+            if (rpa.isHttpsTarget) {
+                config.httpsAgent = rpa.agent;
+            } else {
+                config.httpAgent = rpa.agent;
+            }
+            config.proxy = false; // Disable axios internal proxy handling to use agent
+            return config;
         }
 
         // System Proxy & DOH Injection

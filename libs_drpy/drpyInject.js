@@ -17,6 +17,7 @@ import {jsonpath, jsoup} from './htmlParser.js';
 import hlsParser from './hls-parser.js'
 import {keysToLowerCase} from '../utils/utils.js'
 import {ENV} from '../utils/env.js';
+import {resolveRuleProxyAgent} from '../utils/rule-proxy.js';
 
 // import {batchFetch1, batchFetch2, batchFetch3} from './drpyBatchFetch.js';
 import {batchFetch3} from './hikerBatchFetch.js';
@@ -200,7 +201,19 @@ async function request(url, opt = {}) {
 
     // 配置代理或 HTTPS Agent
     // httpsAgent = new https.Agent({rejectUnauthorized: false});
-    const agent = proxy ? tunnel.httpsOverHttp({proxy: {host: '127.0.0.1', port: 7890}}) : httpsAgent;
+    // 按源出站代理（rule-proxy，DsPlayer 站点「接口走本地代理」映射）优先；
+    // 未命中维持既有链路（源脚本 proxy:true 的 tunnel / 直连 agent）。
+    // http 目标经代理走 httpAgent（tunnel.httpOverHttp），https 走 httpsAgent
+    const rpa = resolveRuleProxyAgent(url);
+    let agent = proxy ? tunnel.httpsOverHttp({proxy: {host: '127.0.0.1', port: 7890}}) : httpsAgent;
+    let httpAgentOverride;
+    if (rpa) {
+        if (rpa.isHttpsTarget) {
+            agent = rpa.agent;
+        } else {
+            httpAgentOverride = rpa.agent;
+        }
+    }
 
     // 设置响应类型为 arraybuffer，确保能正确处理编码
     const respType = returnBuffer ? 'arraybuffer' : 'arraybuffer';
@@ -219,6 +232,7 @@ async function request(url, opt = {}) {
             responseType: respType,
             maxRedirects: redirect ? undefined : 0,
             httpsAgent: agent,
+            ...(httpAgentOverride ? {httpAgent: httpAgentOverride} : {}),
         });
 
         let responseData = resp.data;

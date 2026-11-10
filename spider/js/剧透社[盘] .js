@@ -156,7 +156,7 @@ var rule = {
 
             // 转码链接
             const trans = await Quark.getLiveTranscoding(ids[0], ids[1], ids[2], ids[3]).catch(() => []);
-            trans.filter(t => t.accessable).forEach(t => {
+            (trans || []).filter(t => t.accessable).forEach(t => {
                 urls.push(t.resolution === 'low' ? "流畅" : t.resolution === 'high' ? "高清" : t.resolution === 'super' ? "超清" : t.resolution, t.video_info.url + "#isVideo=true##fastPlayMode##threads=20#");
             });
 

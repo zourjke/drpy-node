@@ -9,6 +9,8 @@
 })
 */
 
+const { req_proxy } = $.require('./_lib.request.js');
+
 var rule = {
   类型: '影视',
   title: '王子TV',
