@@ -63,7 +63,7 @@ export default (fastify, options, done) => {
         }
 
         // 返回 HTML 内容
-        reply.type('text/html;charset=utf-8').send(indexHtml);
+        return reply.type('text/html;charset=utf-8').send(indexHtml);
     });
 
     // 新增 /robots.txt 路由
@@ -71,7 +71,7 @@ export default (fastify, options, done) => {
         const filePath = path.join(options.rootDir, 'public', 'robots.txt');
         const fileStream = createReadStream(filePath);
         // reply.type('text/plain;charset=utf-8').sendFile('robots.txt', path.join(options.rootDir, 'public'));
-        reply.type('text/plain;charset=utf-8').send(fileStream);
+        return reply.type('text/plain;charset=utf-8').send(fileStream);
     });
 
     // 新增 /favicon.ico 路由
@@ -86,10 +86,10 @@ export default (fastify, options, done) => {
                 // return reply.sendFile('favicon.ico', path.join(options.rootDir, 'public')); // 直接返回图片
                 return reply.type('image/x-icon').send(fileStream); // 直接返回图片
             } else {
-                reply.status(404).send({error: 'Favicon not found'}); // 如果文件不存在，返回 404 错误
+                return reply.status(404).send({error: 'Favicon not found'}); // 如果文件不存在，返回 404 错误
             }
         } catch (error) {
-            reply.status(500).send({error: 'Failed to fetch favicon', details: error.message});
+            return reply.status(500).send({error: 'Failed to fetch favicon', details: error.message});
         }
     });
 
@@ -110,10 +110,10 @@ export default (fastify, options, done) => {
                 content = content.replace('$catLink', catLink);
                 return reply.type('text/html').send(content);
             } else {
-                reply.status(404).send({error: 'Favicon not found'}); // 如果文件不存在，返回 404 错误
+                return reply.status(404).send({error: 'Favicon not found'}); // 如果文件不存在，返回 404 错误
             }
         } catch (error) {
-            reply.status(500).send({error: 'Failed to fetch cat', details: error.message});
+            return reply.status(500).send({error: 'Failed to fetch cat', details: error.message});
         }
     });
 

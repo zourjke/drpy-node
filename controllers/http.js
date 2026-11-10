@@ -69,14 +69,14 @@ export default (fastify, options, done) => {
 
             // 处理成功响应
             if (response.status >= 200 && response.status < 400) {
-                reply.status(response.status).send({
+                return reply.status(response.status).send({
                     status: response.status,
                     headers: response.headers,
                     data: response.data,
                 });
             } else {
                 // 处理非成功状态码
-                reply.status(response.status).send({
+                return reply.status(response.status).send({
                     status: 200,
                     headers: response.headers,
                     data: '',
@@ -87,14 +87,14 @@ export default (fastify, options, done) => {
             // logError(error);
             if (error.response) {
                 // 服务器返回了非 2xx 状态码
-                reply.status(error.response.status).send({
+                return reply.status(error.response.status).send({
                     error: error.response.data,
                     headers: error.response.headers,
                     status: error.response.status,
                 });
             } else {
                 // 请求失败或其他错误（网络错误、超时等）
-                reply.status(500).send({error: error.message});
+                return reply.status(500).send({error: error.message});
             }
         }
     });
@@ -184,7 +184,7 @@ export default (fastify, options, done) => {
             });
 
             // 返回转发响应
-            reply
+            return reply
                 .code(response.status)
                 .headers(response.headers)
                 .send(response.data);
@@ -193,13 +193,13 @@ export default (fastify, options, done) => {
             logError('Error forwarding request:', error.message);
             if (error.response) {
                 // 转发服务器响应错误
-                reply
+                return reply
                     .code(error.response.status)
                     .headers(error.response.headers)
                     .send(error.response.data);
             } else {
                 // 转发请求失败
-                reply.code(500).send({error: `Internal Server Error:${error.message}`});
+                return reply.code(500).send({error: `Internal Server Error:${error.message}`});
             }
         }
     });

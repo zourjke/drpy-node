@@ -52,7 +52,7 @@ export async function listDirectory(req, reply) {
 
         return reply.send({ files: result });
     } catch (e) {
-        reply.code(500).send({
+        return reply.code(500).send({
             error: e.message
         });
     }
@@ -111,7 +111,7 @@ export async function readFile(req, reply) {
             content
         });
     } catch (e) {
-        reply.code(500).send({
+        return reply.code(500).send({
             error: e.message
         });
     }
@@ -176,7 +176,7 @@ export async function writeFile(req, reply) {
             message: '文件保存成功'
         });
     } catch (e) {
-        reply.code(500).send({
+        return reply.code(500).send({
             error: e.message
         });
     }
@@ -229,7 +229,7 @@ export async function deleteFile(req, reply) {
             message: '文件删除成功'
         });
     } catch (e) {
-        reply.code(500).send({
+        return reply.code(500).send({
             error: e.message
         });
     }

@@ -50,7 +50,7 @@ export async function getHealth(req, reply) {
             timestamp: Date.now()
         });
     } catch (e) {
-        reply.code(500).send({
+        return reply.code(500).send({
             status: 'error',
             error: e.message
         });
@@ -81,7 +81,7 @@ export async function restartService(req, reply) {
             });
         }
     } catch (e) {
-        reply.code(500).send({
+        return reply.code(500).send({
             success: false,
             error: e.message
         });

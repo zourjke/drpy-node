@@ -22,11 +22,11 @@ export default (fastify, options, done) => {
             const result = Array.from({length: count}, () => misc.randStr(length)).join('\n');
 
             // 返回 text/plain 响应
-            reply.type('text/plain;charset=utf-8').send(result);
+            return reply.type('text/plain;charset=utf-8').send(result);
         } catch (error) {
             // 异常处理
             fastify.log.error(error);
-            reply.status(500).send('An error occurred while generating strings.');
+            return reply.status(500).send('An error occurred while generating strings.');
         }
     });
 

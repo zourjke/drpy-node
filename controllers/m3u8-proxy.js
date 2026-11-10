@@ -73,7 +73,7 @@ export default (fastify, options, done) => {
             ]
         });
         
-        reply.send(healthData);
+        return reply.send(healthData);
     });
 
     /**

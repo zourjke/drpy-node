@@ -101,7 +101,7 @@ export default (fastify, options, done) => {
         try {
             // 读取 HTML 文件内容
             const htmlContent = readFileSync(encoderFilePath, 'utf-8');
-            reply.type('text/html').send(htmlContent); // 返回 HTML 文件内容
+            return reply.type('text/html').send(htmlContent); // 返回 HTML 文件内容
         } catch (error) {
             fastify.log.error(`Failed to read encoder.html: ${error.message}`);
             return reply.status(500).send({error: 'Failed to load encoder page'});
@@ -234,7 +234,7 @@ export default (fastify, options, done) => {
             html = html.replace(/\{\{projectName\}\}/g, projectName);
             html = html.replace(/\{\{downloadItems\}\}/g, downloadItems);
 
-            reply.type('text/html').send(html);
+            return reply.type('text/html').send(html);
         } catch (error) {
             logError('获取下载页面失败:', error.message);
             return reply.code(500).send({

@@ -64,14 +64,14 @@ export default (fastify, options, done) => {
             // 存储图片到内存
             const result = imageManager.storeImage(imageId, base64Data);
 
-            reply.send({
+            return reply.send({
                 success: true,
                 message: '图片上传成功',
                 data: result
             });
 
         } catch (error) {
-            reply.status(400).send({
+            return reply.status(400).send({
                 success: false,
                 message: error.message
             });
@@ -119,10 +119,10 @@ export default (fastify, options, done) => {
             reply.header('Last-Modified', new Date(imageInfo.timestamp).toUTCString()); // 最后修改时间
 
             // 返回图片数据
-            reply.send(buffer);
+            return reply.send(buffer);
 
         } catch (error) {
-            reply.status(500).send({
+            return reply.status(500).send({
                 success: false,
                 message: '服务器错误: ' + error.message
             });
@@ -140,7 +140,7 @@ export default (fastify, options, done) => {
         try {
             const images = imageManager.getAllImages();
 
-            reply.send({
+            return reply.send({
                 success: true,
                 data: {
                     images: images,      // 图片列表
@@ -149,7 +149,7 @@ export default (fastify, options, done) => {
             });
 
         } catch (error) {
-            reply.status(500).send({
+            return reply.status(500).send({
                 success: false,
                 message: '服务器错误: ' + error.message
             });
@@ -179,19 +179,19 @@ export default (fastify, options, done) => {
 
             // 尝试删除图片
             if (imageManager.deleteImage(imageId)) {
-                reply.send({
+                return reply.send({
                     success: true,
                     message: '图片删除成功'
                 });
             } else {
-                reply.status(404).send({
+                return reply.status(404).send({
                     success: false,
                     message: '图片不存在'
                 });
             }
 
         } catch (error) {
-            reply.status(500).send({
+            return reply.status(500).send({
                 success: false,
                 message: '服务器错误: ' + error.message
             });
@@ -209,13 +209,13 @@ export default (fastify, options, done) => {
         try {
             const usage = imageManager.getMemoryUsage();
 
-            reply.send({
+            return reply.send({
                 success: true,
                 data: usage
             });
 
         } catch (error) {
-            reply.status(500).send({
+            return reply.status(500).send({
                 success: false,
                 message: '服务器错误: ' + error.message
             });
@@ -243,7 +243,7 @@ export default (fastify, options, done) => {
             const {maxAge} = request.body || {};
             const cleanedCount = imageManager.cleanExpiredImages(maxAge);
 
-            reply.send({
+            return reply.send({
                 success: true,
                 message: `清理完成，删除了 ${cleanedCount} 张过期图片`,
                 data: {
@@ -253,7 +253,7 @@ export default (fastify, options, done) => {
             });
 
         } catch (error) {
-            reply.status(500).send({
+            return reply.status(500).send({
                 success: false,
                 message: '服务器错误: ' + error.message
             });
@@ -311,14 +311,14 @@ export default (fastify, options, done) => {
             // 更新图片数据
             const result = imageManager.storeImage(imageId, base64Data);
 
-            reply.send({
+            return reply.send({
                 success: true,
                 message: '图片更新成功',
                 data: result
             });
 
         } catch (error) {
-            reply.status(400).send({
+            return reply.status(400).send({
                 success: false,
                 message: error.message
             });

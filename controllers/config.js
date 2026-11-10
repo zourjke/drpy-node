@@ -1038,12 +1038,12 @@ export default (fastify, options, done) => {
      */
     fastify.get('/index', {config: {auth: 'pwd'}}, async (request, reply) => {
         if (!existsSync(options.indexFilePath)) {
-            reply.code(404).send({error: 'index.json not found'});
+            return reply.code(404).send({error: 'index.json not found'});
             return;
         }
 
         const content = readFileSync(options.indexFilePath, 'utf-8');
-        reply.send(JSON.parse(content));
+        return reply.send(JSON.parse(content));
     });
 
     /**
@@ -1176,9 +1176,9 @@ export default (fastify, options, done) => {
             let cost = t2 - t1;
             // configObj.cost = cost;
             // reply.send(configObj);
-            reply.send(Object.assign({cost}, configObj));
+            return reply.send(Object.assign({cost}, configObj));
         } catch (error) {
-            reply.status(500).send({error: 'Failed to generate site JSON', details: error.message});
+            return reply.status(500).send({error: 'Failed to generate site JSON', details: error.message});
         }
     });
 

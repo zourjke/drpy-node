@@ -33,7 +33,7 @@ export async function listSources(req, reply) {
         result.disabled = [...getDisabledSet()].sort();
         return reply.send(result);
     } catch (e) {
-        reply.code(500).send({
+        return reply.code(500).send({
             error: e.message
         });
     }
@@ -63,7 +63,7 @@ export async function setSourcesEnabled(req, reply) {
         return reply.send({success: true, data: {updated: r.updated, skipped: r.skipped}});
     } catch (e) {
         req.log.error('设置源启用状态失败:', e);
-        reply.code(500).send({success: false, error: e.message});
+        return reply.code(500).send({success: false, error: e.message});
     }
 }
 
@@ -171,7 +171,7 @@ export async function validateSpider(req, reply) {
             });
         }
     } catch (e) {
-        reply.code(500).send({
+        return reply.code(500).send({
             error: e.message
         });
     }
@@ -198,7 +198,7 @@ export async function checkSyntax(req, reply) {
 
         return reply.send(await syntaxCheckFile(filePath));
     } catch (e) {
-        reply.code(400).send({
+        return reply.code(400).send({
             isValid: false,
             error: `语法错误: ${e.message}`
         });
@@ -286,7 +286,7 @@ export async function uploadSource(req, reply) {
 
         return reply.send({success: true, data: {path: rel, engine, check}});
     } catch (e) {
-        reply.code(500).send({success: false, error: e.message});
+        return reply.code(500).send({success: false, error: e.message});
     }
 }
 
@@ -331,7 +331,7 @@ export async function deleteSource(req, reply) {
         regenerateIndexAsync(); // 已删源不在新配置中，缓存配置同样需要重建
         return reply.send({success: true, data: {path: `${cfg.dir}/${name}`, engine: m.engine}});
     } catch (e) {
-        reply.code(500).send({success: false, error: e.message});
+        return reply.code(500).send({success: false, error: e.message});
     }
 }
 

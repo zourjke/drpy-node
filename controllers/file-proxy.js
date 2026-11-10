@@ -222,7 +222,7 @@ export default (fastify, options, done) => {
         const beforeSize = requestCache.size;
         requestCache.clear();
         
-        reply.send({
+        return reply.send({
             status: 'success',
             message: 'Cache cleared',
             cleared: beforeSize,
@@ -256,7 +256,7 @@ export default (fastify, options, done) => {
             null
         );
 
-        reply.send(statusData);
+        return reply.send(statusData);
     });
 
     done();

@@ -90,11 +90,11 @@ export default (fastify, options, done) => {
                 response.warning = '报告来源于非本服务器配置，已标记保存';
             }
 
-            reply.send(response);
+            return reply.send(response);
 
         } catch (error) {
             logError('[Source-Checker] 保存报告失败:', error);
-            reply.status(500).send({
+            return reply.status(500).send({
                 success: false,
                 message: '保存报告失败',
                 error: error.message
@@ -108,7 +108,7 @@ export default (fastify, options, done) => {
             const reportPath = path.join(options.rootDir, 'data', 'source-checker', 'report.json');
 
             if (!existsSync(reportPath)) {
-                reply.status(404).send({
+                return reply.status(404).send({
                     success: false,
                     error: 'Report not found'
                 });
@@ -118,12 +118,12 @@ export default (fastify, options, done) => {
             const reportContent = readFileSync(reportPath, 'utf-8');
             const reportData = JSON.parse(reportContent);
 
-            reply.send({
+            return reply.send({
                 success: true,
                 data: reportData
             });
         } catch (error) {
-            reply.status(500).send({
+            return reply.status(500).send({
                 success: false,
                 error: 'Failed to read report',
                 details: error.message

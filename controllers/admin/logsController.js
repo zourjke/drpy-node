@@ -43,7 +43,7 @@ export async function getLogs(req, reply) {
             content: lastLines.join('\n')
         });
     } catch (e) {
-        reply.code(500).send({
+        return reply.code(500).send({
             error: e.message
         });
     }

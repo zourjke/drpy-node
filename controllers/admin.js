@@ -503,7 +503,7 @@ async function getConfig(req, reply) {
 
         return reply.send(config);
     } catch (e) {
-        reply.code(500).send({ error: e.message });
+        return reply.code(500).send({ error: e.message });
     }
 }
 
@@ -563,7 +563,7 @@ async function updateConfig(req, reply) {
             message: `配置项 ${key} 已更新`
         });
     } catch (e) {
-        reply.code(500).send({ error: e.message });
+        return reply.code(500).send({ error: e.message });
     }
 }
 
@@ -585,7 +585,7 @@ async function getEnv(req, reply) {
 
         return reply.send(envData);
     } catch (e) {
-        reply.code(500).send({ error: e.message });
+        return reply.code(500).send({ error: e.message });
     }
 }
 
@@ -594,7 +594,7 @@ async function getVersion(req, reply) {
         const packageJson = await fs.readJson(path.join(PROJECT_ROOT, 'package.json'));
         return reply.send({ version: packageJson.version });
     } catch (e) {
-        reply.code(500).send({ error: e.message });
+        return reply.code(500).send({ error: e.message });
     }
 }
 
@@ -620,6 +620,6 @@ async function getRoutesInfo(req, reply) {
             registered_controllers: registered
         });
     } catch (e) {
-        reply.code(500).send({ error: e.message });
+        return reply.code(500).send({ error: e.message });
     }
 }

@@ -335,7 +335,7 @@ export default (fastify, options, done) => {
     // /clash/status → 后端探测在线状态
     fastify.get(CLASH_PREFIX + '/status', async (req, reply) => {
         const online = await isClashOnline();
-        reply.send({ online, host: CLASH_HOST, port: CLASH_PORT });
+        return reply.send({ online, host: CLASH_HOST, port: CLASH_PORT });
     });
 
     // ===== 订阅管理（远程订阅 URL / 本地节点 YAML，响应式页面兼容手机+PC） =====
@@ -351,25 +351,25 @@ export default (fastify, options, done) => {
     // 远程订阅 URL：读取 / 保存
     fastify.get(CLASH_PREFIX + '/config/api/remote', async (req, reply) => {
         try { reply.send({ ok: true, url: readRemoteSub() }); }
-        catch (e) { reply.send({ ok: false, msg: e.message }); }
+        catch (e) { return reply.send({ ok: false, msg: e.message }); }
     });
     fastify.post(CLASH_PREFIX + '/config/api/remote', async (req, reply) => {
         const url = String(parseJsonBody(req.body).url || '').trim();
         if (!/^https?:\/\//i.test(url)) return reply.send({ ok: false, msg: '订阅 URL 需以 http(s):// 开头' });
-        reply.send(await saveRemoteSub(url));
+        return reply.send(await saveRemoteSub(url));
     });
 
     // 本地节点 YAML：读取 / 保存
     fastify.get(CLASH_PREFIX + '/config/api/local', async (req, reply) => {
         try {
             const dir = getClashPluginDir();
-            reply.send({ ok: true, content: fs.readFileSync(path.join(dir, 'proxies-local.yaml'), 'utf-8') });
-        } catch (e) { reply.send({ ok: false, msg: e.message }); }
+            return reply.send({ ok: true, content: fs.readFileSync(path.join(dir, 'proxies-local.yaml'), 'utf-8') });
+        } catch (e) { return reply.send({ ok: false, msg: e.message }); }
     });
     fastify.post(CLASH_PREFIX + '/config/api/local', async (req, reply) => {
         const content = parseJsonBody(req.body).content;
         if (typeof content !== 'string' || !content.trim()) return reply.send({ ok: false, msg: '内容为空' });
-        reply.send(await saveLocalSub(content));
+        return reply.send(await saveLocalSub(content));
     });
 
     // 触发远程订阅刷新

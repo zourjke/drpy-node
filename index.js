@@ -1,5 +1,6 @@
 import {log, logError} from './utils/log.js';
 import { performance } from 'perf_hooks';
+import {existsSync} from 'fs';
 const startTime = performance.now();
 
 import * as fastlogger from './controllers/fastlogger.js'
@@ -282,6 +283,12 @@ const stopWebSocketServer = async () => {
 // 启动服务
 const start = async () => {
     try {
+        // bundle 版部署形态下检测树版 node_modules 覆盖残留（如 node-pty）：
+        // 微型闭包不含它们，残留无害但占空间，提示用户可清理（不强清）
+        if (existsSync(path.join(PROJECT_ROOT, 'dist', 'server.bundle.mjs')) &&
+            existsSync(path.join(PROJECT_ROOT, 'node_modules', 'node-pty'))) {
+            log('检测到旧树版 node_modules 残留（如 node-pty），bundle 版无需这些包，可清理 node_modules 后仅保留闭包内目录');
+        }
         // 启动 Fastify 主服务
         // await fastify.listen({port: PORT, host: '0.0.0.0'});
         await fastify.listen({port: PORT, host: '::'});

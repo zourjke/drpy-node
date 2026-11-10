@@ -51,9 +51,9 @@ export default (fastify, options, done) => {
 
         try {
             let result = await getOriginalJs(code);
-            reply.send({success: true, result});
+            return reply.send({success: true, result});
         } catch (error) {
-            reply.status(500).send({error: error.message});
+            return reply.status(500).send({error: error.message});
         }
     });
     done();

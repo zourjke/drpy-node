@@ -220,7 +220,7 @@ export async function executeQuery(req, reply) {
             db.close();
         }
     } catch (e) {
-        reply.code(500).send({
+        return reply.code(500).send({
             error: `SQL 错误: ${e.message}`
         });
     }
@@ -243,7 +243,7 @@ export async function getTables(req, reply) {
             db.close();
         }
     } catch (e) {
-        reply.code(500).send({
+        return reply.code(500).send({
             error: e.message
         });
     }
@@ -275,7 +275,7 @@ export async function getTableSchema(req, reply) {
             db.close();
         }
     } catch (e) {
-        reply.code(500).send({
+        return reply.code(500).send({
             error: e.message
         });
     }

@@ -302,7 +302,7 @@ export default (fastify, options, done) => {
     // 在线状态探测
     fastify.get(LX_PREFIX + '/status', {config: {auth: 'public'}}, async (req, reply) => {
         const online = await isLxOnline();
-        reply.send({ online, host: LX_HOST, port: LX_PORT });
+        return reply.send({ online, host: LX_HOST, port: LX_PORT });
     });
 
     // /admin/* 后台管理控制台（转发到 lxserver /admin）

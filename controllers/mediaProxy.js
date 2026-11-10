@@ -261,7 +261,7 @@ export default (fastify, _opts, done) => {
             }
         } catch (error) {
             fastify.log.error(error.message);
-            if (!reply.sent && !reply.raw.destroyed) reply.code(500).send({error: error.message});
+            if (!reply.sent && !reply.raw.destroyed) return reply.code(500).send({error: error.message});
         }
     });
 

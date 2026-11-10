@@ -3,8 +3,9 @@ import path from 'path';
 import pino from "pino";
 import Fastify from "fastify";
 import {fileURLToPath} from 'url';
-import {createStream} from 'rotating-file-stream';
+import {createStream} from "rotating-file-stream";
 import dotenv from 'dotenv';
+import {attachSanitizeHooks} from '../utils/sanitize-utf16.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -102,7 +103,7 @@ function initializeFastify() {
         logger: _logger,
     });
 
-    // 添加CORS支持的钩子
+    // 添加CORS支持的钩子 + 出站 UTF-16 良构化钩子
     [_fastify, _wsApp].forEach(server => {
         server.addHook('onRequest', async (request, reply) => {
             reply.header('Access-Control-Allow-Origin', '*');
@@ -111,10 +112,15 @@ function initializeFastify() {
             reply.header('Access-Control-Allow-Credentials', 'true');
 
             if (request.method === 'OPTIONS') {
-                reply.status(200).send();
+                return reply.status(200).send();
                 return;
             }
         });
+
+        // 出站 UTF-16 良构化（lone surrogate 闪退根治）：preSerialization 深洗对象
+        // payload + onSend 洗字符串 payload（含上游 JSON 原文透传的坏转义序列），
+        // 树版与 bundle 版同源生效，详见 utils/sanitize-utf16.js
+        attachSanitizeHooks(server);
     });
 
     const instances = {

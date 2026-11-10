@@ -110,10 +110,10 @@ export default (fastify, options, done) => {
             }
 
             // 返回编码成功的结果
-            reply.send({success: true, result});
+            return reply.send({success: true, result});
         } catch (error) {
             // 捕获并返回编码过程中的错误
-            reply.status(500).send({error: error.message});
+            return reply.status(500).send({error: error.message});
         }
     });
     

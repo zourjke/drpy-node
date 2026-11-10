@@ -8,9 +8,14 @@
  */
 import util from 'util';
 import {fastify} from '../controllers/fastlogger.js';
+import {scrubString} from './sanitize-utf16.js';
 
-export const log = (...args) => fastify.log.info(util.format(...args));
-export const logWarn = (...args) => fastify.log.warn(util.format(...args));
-export const logError = (...args) => fastify.log.error(util.format(...args));
+// 日志消息出口 scrub：客户端服务页会逐行渲染日志，lone surrogate 同样触雷
+// （pino 落盘走 utf8 Buffer 虽天然兜底，显式清洗保护任何非 Buffer 消费方）
+const fmt = (...args) => scrubString(util.format(...args));
+
+export const log = (...args) => fastify.log.info(fmt(...args));
+export const logWarn = (...args) => fastify.log.warn(fmt(...args));
+export const logError = (...args) => fastify.log.error(fmt(...args));
 
 export default {log, logWarn, logError};

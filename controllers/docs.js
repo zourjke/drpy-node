@@ -33,14 +33,14 @@ export default (fastify, options, done) => {
 
             // 安全检查：确保resolvedPath在docsDir目录下，防止路径遍历攻击
             if (!resolvedPath.startsWith(options.docsDir)) {
-                reply.status(403).send(`<h1>403 Forbidden</h1><p>Access to the requested file is forbidden.</p>`);
+                return reply.status(403).send(`<h1>403 Forbidden</h1><p>Access to the requested file is forbidden.</p>`);
                 return;
             }
             fastify.log.info(`Resolved path: ${resolvedPath}`);
 
             // 检查文件是否存在
             if (!existsSync(resolvedPath)) {
-                reply.status(404).send(`<h1>404 Not Found</h1><p>File "${fullPath}" not found in /docs.</p>`);
+                return reply.status(404).send(`<h1>404 Not Found</h1><p>File "${fullPath}" not found in /docs.</p>`);
                 return;
             }
 
@@ -55,7 +55,7 @@ export default (fastify, options, done) => {
                 const htmlContent = marked.parse(markdownContent).replaceAll('$pwd', process.env.API_PWD || '');
 
                 // 返回完整的HTML页面
-                reply.type('text/html').send(`
+                return reply.type('text/html').send(`
                 <!DOCTYPE html>
                 <html lang="en">
                 <head>
@@ -84,11 +84,11 @@ export default (fastify, options, done) => {
                     if (mimeType.startsWith('text') || mimeType.includes('json') || mimeType.includes('javascript')) {
                         // 文本类型文件以UTF-8编码读取
                         const fileContent = readFileSync(resolvedPath, 'utf8'); 
-                        reply.type(mimeType).send(fileContent);
+                        return reply.type(mimeType).send(fileContent);
                     } else {
                         // 二进制文件直接读取
                         const fileContent = readFileSync(resolvedPath);
-                        reply.type(mimeType).send(fileContent);
+                        return reply.type(mimeType).send(fileContent);
                     }
 
                 } catch (e) {
@@ -98,7 +98,7 @@ export default (fastify, options, done) => {
             }
         } catch (error) {
             // 全局错误处理
-            reply.status(500).send(`<h1>500 Internal Server Error</h1><p>Error reading or rendering file: ${error.message}</p>`);
+            return reply.status(500).send(`<h1>500 Internal Server Error</h1><p>Error reading or rendering file: ${error.message}</p>`);
         }
     });
 

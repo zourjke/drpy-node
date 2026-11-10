@@ -212,7 +212,7 @@ export default (fastify, options, done) => {
                 const error_msg=`Module ${moduleName} not found`;
                 logError(error_msg);
                 fastify.log.error(error_msg);
-                reply.status(404).send({error: error_msg});
+                return reply.status(404).send({error: error_msg});
                 return;
             }
 
@@ -428,14 +428,14 @@ export default (fastify, options, done) => {
                     Object.assign(result, {list: resultHomeVod})
                 }
 
-                sendFiltered(result);
+                return sendFiltered(result);
 
             } catch (error) {
                 // 错误处理和日志记录
                 const error_msg=`Failed to process module ${moduleName}: ${error.message}`;
                 logError(error_msg);
                 fastify.log.error(error_msg);
-                reply.status(500).send({error: error_msg});
+                return reply.status(500).send({error: error_msg});
             }
         }
     });
@@ -475,7 +475,7 @@ export default (fastify, options, done) => {
             const error_msg=`Module ${moduleName} not found`;
             logError(error_msg);
             fastify.log.error(error_msg);
-            reply.status(404).send({error: error_msg});
+            return reply.status(404).send({error: error_msg});
             return;
         }
 
@@ -558,14 +558,14 @@ export default (fastify, options, done) => {
                 // 如果返回的是文本内容（例如 JSON 或字符串）
                 if (mediaType && (mediaType.includes('text') || mediaType === 'application/json')) {
                     // 对于文本类型，设置 UTF-8 编码
-                    reply
+                    return reply
                         .code(statusCode)
                         .type(`${mediaType}; charset=utf-8`)  // 设置编码为 UTF-8
                         .headers(headers || {})  // 如果有headers, 则加上
                         .send(content);
                 } else {
                     // 对于其他类型的文本（例如 XML），直接返回，不指定 UTF-8 编码
-                    reply
+                    return reply
                         .code(statusCode)
                         .type(mediaType)
                         .headers(headers || {})
@@ -573,7 +573,7 @@ export default (fastify, options, done) => {
                 }
             } else {
                 // 如果返回的是二进制内容（例如图片或其他文件）
-                reply
+                return reply
                     .code(statusCode)
                     .type(mediaType)  // 使用合适的媒体类型，如 image/png
                     .headers(headers || {})
@@ -584,7 +584,7 @@ export default (fastify, options, done) => {
             const error_msg = `Error proxy module ${moduleName}:${error.message}`;
             fastify.log.error(error_msg);
             logError(error_msg);
-            reply.status(500).send({error: error_msg});
+            return reply.status(500).send({error: error_msg});
         }
     });
 
@@ -709,7 +709,7 @@ export default (fastify, options, done) => {
             const error_msg = `Failed to proxy jx ${jxName}: ${error.message}`;
             fastify.log.error(error_msg);
             logError(error_msg);
-            reply.status(500).send({error: error_msg});
+            return reply.status(500).send({error: error_msg});
         }
     });
 
