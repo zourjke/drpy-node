@@ -238,6 +238,13 @@ function runBundlePackage(root, {green, date, min = false, useZip = false}) {
     pack(staging, archivePath, useZip);
     rmSync(staging, {recursive: true, force: true});
     console.log(`[package-clean] 完成: ${archivePath}`);
+    // 部署配对提示（2026-11-12 真机实锤：标准档 mjs 单推到 -min 部署的设备
+    // （3 包微型 node_modules）→ 启动 import @fastify/swagger-ui 即
+    // ERR_MODULE_NOT_FOUND 静默 exit 1——bundle mjs 与 node_modules 必须成对动）
+    const extDeps = (min ? BUNDLE_RUNTIME_DEPS_MIN : BUNDLE_RUNTIME_DEPS).join('、');
+    console.log(`[package-clean] 部署提示：${min ? '-min' : '标准'}档运行时外置 = ${extDeps}` +
+        `；单推 server.bundle.mjs 的前提 = 目标 node_modules ⊇ 该外置集，` +
+        `否则整包部署本 7z（bundle + 配对 node_modules 不可拆散）`);
 }
 
 // ==================== 可测纯函数 ====================
